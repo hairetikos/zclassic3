@@ -73,8 +73,8 @@
 
 using namespace std;
 
-const char * const BITCOIN_CONF_FILENAME = "zcash.conf";
-const char * const BITCOIN_PID_FILENAME = "zcashd.pid";
+const char * const BITCOIN_CONF_FILENAME = "zclassic.conf";
+const char * const BITCOIN_PID_FILENAME = "zclassicd.pid";
 
 CCriticalSection cs_args;
 map<string, string> mapArgs;
@@ -226,13 +226,13 @@ void PrintExceptionContinue(const std::exception* pex, const char* pszThread)
 
 fs::path GetDefaultDataDir()
 {
-    // Windows < Vista: C:\Documents and Settings\Username\Application Data\Zcash
-    // Windows >= Vista: C:\Users\Username\AppData\Roaming\Zcash
-    // Mac: ~/Library/Application Support/Zcash
-    // Unix: ~/.zcash
+    // Windows < Vista: C:\Documents and Settings\Username\Application Data\Zclassic
+    // Windows >= Vista: C:\Users\Username\AppData\Roaming\Zclassic
+    // Mac: ~/Library/Application Support/Zclassic
+    // Unix: ~/.zclassic
 #ifdef WIN32
     // Windows
-    return GetSpecialFolderPath(CSIDL_APPDATA) / "Zcash";
+    return GetSpecialFolderPath(CSIDL_APPDATA) / "Zclassic";
 #else
     fs::path pathRet;
     char* pszHome = getenv("HOME");
@@ -244,10 +244,10 @@ fs::path GetDefaultDataDir()
     // Mac
     pathRet /= "Library/Application Support";
     TryCreateDirectory(pathRet);
-    return pathRet / "Zcash";
+    return pathRet / "Zclassic";
 #else
     // Unix
-    return pathRet / ".zcash";
+    return pathRet / ".zclassic";
 #endif
 #endif
 }
@@ -419,7 +419,7 @@ void ReadConfigFile(const std::string& confPath,
             }
 
             InterpretNegativeSetting(strKey, strValue);
-            // Don't overwrite existing settings so command line settings override zcash.conf
+            // Don't overwrite existing settings so command line settings override zclassic.conf
             if (mapSettingsRet.count(strKey) == 0)
                 mapSettingsRet[strKey] = strValue;
             mapMultiSettingsRet[strKey].push_back(strValue);

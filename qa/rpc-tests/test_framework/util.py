@@ -29,7 +29,7 @@ import errno
 from . import coverage
 from .authproxy import AuthServiceProxy, JSONRPCException
 
-ZCASHD_BINARY = os.path.join('src', 'zcashd')
+ZCASHD_BINARY = os.path.join('src', 'zclassicd')
 
 COVERAGE_DIR = None
 PRE_BLOSSOM_BLOCK_TARGET_SPACING = 150

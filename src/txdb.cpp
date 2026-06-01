@@ -11,6 +11,7 @@
 #include "main.h"
 #include "pow.h"
 #include "uint256.h"
+#include "util/time.h"
 #include "zcash/History.hpp"
 
 #include <stdint.h>
@@ -688,6 +689,12 @@ bool CBlockTreeDB::LoadBlockIndexGuts(
     pcursor->Seek(make_pair(DB_BLOCK_INDEX, uint256()));
 
     // Load mapBlockIndex
+    //
+    // This loop is single-threaded and reads/deserializes every block index
+    // entry in the database (millions on a fully-synced chain), so emit a
+    // periodic heartbeat; otherwise startup looks like a 100% CPU hang here.
+    int64_t nStartMs = GetTimeMillis();
+    int64_t nLoaded = 0;
     while (pcursor->Valid()) {
         boost::this_thread::interruption_point();
         std::pair<char, uint256> key;
@@ -769,6 +776,11 @@ bool CBlockTreeDB::LoadBlockIndexGuts(
                 }
 
                 pcursor->Next();
+
+                if (++nLoaded % 250000 == 0) {
+                    LogPrintf("LoadBlockIndexGuts: loaded %d block index entries (%.1fs)...\n",
+                              nLoaded, (GetTimeMillis() - nStartMs) * 0.001);
+                }
             } else {
                 return error("LoadBlockIndex() : failed to read value");
             }
@@ -777,5 +789,7 @@ bool CBlockTreeDB::LoadBlockIndexGuts(
         }
     }
 
+    LogPrintf("LoadBlockIndexGuts: loaded %d block index entries in %.1fs\n",
+              nLoaded, (GetTimeMillis() - nStartMs) * 0.001);
     return true;
 }

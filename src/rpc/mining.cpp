@@ -755,13 +755,8 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
         entry.pushKV("sigops", pblocktemplate->vTxSigOps[index_in_template]);
 
         if (tx.IsCoinBase()) {
-            // Show founders' reward if it is required
-            auto nextHeight = pindexPrev->nHeight+1;
-            bool canopyActive = consensus.NetworkUpgradeActive(nextHeight, Consensus::UPGRADE_CANOPY);
-            if (!canopyActive && nextHeight > 0 && nextHeight <= consensus.GetLastFoundersRewardBlockHeight(nextHeight)) {
-                CAmount nBlockSubsidy = consensus.GetBlockSubsidy(nextHeight);
-                entry.pushKV("foundersreward", nBlockSubsidy / 5);
-            }
+            // Zclassic has no Founders' Reward: the coinbase pays 100% of the
+            // subsidy to the miner, so no "foundersreward" field is emitted.
             entry.pushKV("required", true);
             txCoinbase = entry;
         } else {
@@ -1012,9 +1007,10 @@ UniValue getblocksubsidy(const UniValue& params, bool fHelp)
         if (lockboxstreams.size() > 0) {
             result.pushKV("lockboxstreams", lockboxstreams);
         }
-    } else if (nHeight > 0 && nHeight <= consensus.GetLastFoundersRewardBlockHeight(nHeight)) {
-        nFoundersReward = nBlockSubsidy/5;
     }
+    // Zclassic has no Founders' Reward; nFoundersReward stays 0 and the miner
+    // receives the entire block subsidy (less any active funding streams, of
+    // which Zclassic has none).
     CAmount nMinerReward = nBlockSubsidy - nFoundersReward - nFundingStreamsTotal - nLockboxTotal;
     result.pushKV("miner", ValueFromAmount(nMinerReward));
     result.pushKV("founders", ValueFromAmount(nFoundersReward));

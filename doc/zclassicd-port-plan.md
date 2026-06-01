@@ -116,7 +116,7 @@ verification.
 - Build unmodified 6.12.3 (`depends` + Rust) first so every later change is
   bisectable.
 
-### Phase 1 — Network & chain identity
+### Phase 1 — Network & chain identity  ✅ DONE
 Files: `chainparams.cpp`, `chainparamsbase.cpp`, `chainparamsseeds.h`.
 - Overwrite mainnet/testnet/regtest magic, ports, base58 + bech32 prefixes,
   currency unit, BIP44 type, message-magic string, `strNetworkID`.
@@ -125,19 +125,30 @@ Files: `chainparams.cpp`, `chainparamsbase.cpp`, `chainparamsseeds.h`.
   Equihash must reproduce ZCL's exact genesis hash — verify byte-for-byte.
 - Replace seeds, checkpoints, `nMinimumChainWork`, fast-sync anchor.
 
-### Phase 2 — Remove the modern tax (align coinbase rule with ZCL)
+> Implemented: shared `CreateGenesisBlock` now uses ZCL's coinbase timestamp and
+> scriptSig constant (486604799); mainnet/testnet/regtest genesis values + asserts,
+> magic/ports (8033/18033), currency (ZCL/ZCT/REG), BIP44 147, Overwinter+Sapling
+> at 476969 (mainnet) / 20 (testnet), all Zcash post-Sapling upgrades disabled
+> (NO_ACTIVATION), ZCL DNS seeds, ZCL checkpoints + nMinimumChainWork. Zcash-only
+> Sprout/chain-supply checkpoints neutralised (ZIP209 off on mainnet). Genesis
+> hash/merkle assert verification at runtime is pending a full build (Phase 9).
+
+### Phase 2 — Remove the modern tax (align coinbase rule with ZCL)  ✅ DONE
 Goal: only coinbase value rule is `coinbase <= subsidy + fees`.
-- Remove `consensus/funding.{h,cpp}`, the `FundingStreamInfo[]` table and the
-  `FundingStream` / `Lockbox` / `OnetimeLockboxDisbursement` machinery in
-  `consensus/params.{h,cpp}`.
-- Remove all `AddZIP207*` / `AddZIP271*` calls and `vFoundersRewardAddress` in
-  `chainparams.cpp` (all three networks).
-- Remove enforcement in `main.cpp:1090-1124` (funding streams) and
-  `main.cpp:1253-1279` (lockbox).
-- Simplify coinbase construction in `miner.cpp:117-174` to return
-  `subsidy + nFees`.
-- Simplify `getblocktemplate` output in `rpc/mining.cpp`.
-- Delete `gtest/test_foundersreward.cpp` and funding tests.
+- Remove the ZIP 207 funding-stream / ZIP 271 lockbox setup from chainparams.
+- Remove enforcement in `main.cpp` (founders reward) and the founders output in
+  `miner.cpp`; report 100%-to-miner in `rpc/mining.cpp` and `metrics.cpp`.
+
+> Implemented: removed both funding-stream setup blocks (mainnet+testnet) from
+> chainparams; removed the legacy Founders' Reward enforcement in
+> `ContextualCheckBlock` (`main.cpp`); removed the founders output in `miner.cpp`
+> (miner keeps 100%); `getblocktemplate`/`getblocksubsidy` no longer emit a
+> founders reward; metrics no longer subtract 20%. The ZIP 207/271 funding +
+> lockbox machinery and the vestigial `vFoundersRewardAddress`/helper methods are
+> left compiled but inert (mirrors upstream Zclassic, which kept the data but
+> never enforced it). Full removal of the dead classes is deferred to a later
+> cleanup. The funding-stream enforcement in `ContextualCheckTransaction` is gated
+> on Canopy/Heartwood/NU6 (all disabled) so it never executes.
 
 ### Phase 3 — Subsidy & halving math → ZCL's
 File: `consensus/params.cpp`.

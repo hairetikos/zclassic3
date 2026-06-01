@@ -1,7 +1,7 @@
 Format: http://svn.debian.org/wsvn/dep/web/deps/dep5.mdwn?rev=174
-Upstream-Name: Zcash
+Upstream-Name: Zclassic
 Upstream-Contact: Electric Coin Company <team@electriccoin.co>
-Source: https://github.com/zcash/zcash
+Source: https://github.com/hairetikos/zclassic3
 
 Files: *
 Copyright: 2016-2023, The Zcash developers

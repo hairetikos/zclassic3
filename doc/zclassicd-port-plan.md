@@ -190,6 +190,66 @@ File: `pow.cpp`, `consensus/params.cpp`, `chainparams.cpp`.
 - Verify the assumptions that don't matter to ZCL don't break it: Heartwood
   "no shielded coinbase outputs" path, ZIP-212/216 "always-on after NU5"
   comments, expiry-threshold pre-NU5 path.
+- Apply the wallet-side "neuter" gates so dormant features don't produce dead
+  artifacts (see the dedicated section below).
+
+### Keeping Orchard / unified addresses / v5 dormant but enableable
+
+A deliberate design goal for Zclassicd: **do not delete** the modern shielded
+machinery (Orchard, unified addresses, v5/ZIP-225 transactions, NU5/NU6 logic).
+Keep it all compiled but inert, controlled purely by network-upgrade activation
+heights, so a *future* Zclassic network upgrade can switch it on with no code
+surgery.
+
+**Governing principle: gate by activation height, never by deletion.** Every
+post-Sapling feature in this codebase is already guarded by
+`NetworkUpgradeActive(height, UPGRADE_*)`. Holding those upgrades at
+`NO_ACTIVATION_HEIGHT` (Phase 1) makes them dormant while leaving the code,
+the Rust Orchard/Sapling crates, and the wallet DB structures present and
+forward-compatible.
+
+What this means structurally:
+
+- **Phase 4 must ADD new `UpgradeIndex` entries** for Zclassic's
+  Bubbles/DiffAdj/Buttercup rather than repurposing the disabled
+  Blossom/Heartwood/Canopy/NU5/NU6/NU6.1 slots. Those Zcash upgrades stay intact
+  and disabled precisely so a future ZCL upgrade can reuse the Orchard/NU5
+  machinery. (Decision locked: *add new entries.*)
+- **Consensus is already neutered by disabling NU5:** v5/Orchard transactions are
+  rejected (`bad-tx-has-orchard-actions`, v5 version rejected), Orchard bundles
+  must be empty, and no Orchard pool can form. No code change required.
+- **Wallet/RPC neuter gates (so dormant features don't emit dead artifacts):**
+  - `CWallet::DefaultReceiverTypes(nHeight)` (`src/wallet/wallet.cpp`) now adds the
+    Orchard receiver only when NU5 is active at `nHeight`; until then unified
+    addresses contain only P2PKH + Sapling receivers.
+  - `z_getaddressforaccount` (`src/wallet/rpcwallet.cpp`) rejects an explicit
+    `"orchard"` receiver request while NU5 is inactive, with a clear
+    "not enabled on this network" error, instead of returning a dead receiver.
+  - `z_getnewaccount` / unified spending keys are left fully functional (they
+    derive an internal Orchard key that simply stays dormant); `z_getnewaddress`
+    has no Orchard path. Sprout address creation stays enabled (gated off Canopy,
+    which is disabled), matching Zclassic's continued Sprout support.
+
+**How a future Zclassic Orchard rollout would work (a deliberate hardfork):**
+
+1. This is a coordinated **network upgrade (hardfork)** — expected, and distinct
+   from the "no softfork" requirement for *today's* shoehorn (that requirement is
+   about matching the existing chain's consensus, not about never upgrading).
+2. Orchard has prerequisites in the Zcash lineage (Canopy's ZIP-212, Heartwood,
+   then NU5). A ZCL rollout schedules those activation heights together at a
+   future block — they are kept intact and disabled today precisely so they can
+   be switched on as a bundle.
+3. **Mint Zclassic-specific consensus branch IDs** for the rollout upgrade(s)
+   rather than reusing Zcash's NU5/NU6 branch IDs, to prevent cross-chain
+   transaction replay and peer confusion.
+4. Once activation heights + branch IDs are set in `chainparams.cpp` and a release
+   is shipped, the rest follows automatically: the wallet gates above open at the
+   activation height, v5/Orchard transactions become valid, and unified addresses
+   begin advertising Orchard receivers — with no further code change.
+5. Review the funding/lockbox machinery before any such upgrade: it is inert today
+   (no streams defined) but still compiled, so a future upgrade could either keep
+   it disabled (Zclassic's fair-launch default) or, as a separate governance
+   decision, define streams — that choice is independent of enabling Orchard.
 
 ### Phase 7 — Historical-validation correctness (Sprout & Sapling)
 - **Confirm modern Zcashd still bundles Sprout JoinSplit verification**

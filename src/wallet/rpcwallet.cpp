@@ -3354,6 +3354,19 @@ UniValue z_getaddressforaccount(const UniValue& params, bool fHelp)
         receiverTypes = CWallet::DefaultReceiverTypes(chainActive.Height());
     }
 
+    // Zclassic keeps the Orchard machinery compiled but dormant. An Orchard
+    // receiver cannot be used until NU5 is active, so reject explicit requests
+    // for one rather than handing back a dead receiver. This guard disappears on
+    // its own if a future Zclassic network upgrade activates NU5.
+    if (receiverTypes.count(ReceiverType::Orchard) > 0 &&
+        !Params().GetConsensus().NetworkUpgradeActive(chainActive.Height(), Consensus::UPGRADE_NU5)) {
+        throw JSONRPCError(
+            RPC_INVALID_PARAMETER,
+            "The orchard receiver type is not enabled on this network: the Orchard "
+            "shielded pool is not active on Zclassic. Request only \"p2pkh\" and/or "
+            "\"sapling\" receivers.");
+    }
+
     std::optional<libzcash::diversifier_index_t> j = std::nullopt;
     if (params.size() >= 3) {
         if (params[2].getType() != UniValue::VNUM) {

@@ -72,8 +72,10 @@ $0 [ MAKEARGS... ]
       OPTIMIZE=1     ./zcutil/build.sh -j\$(nproc)   # -O3 -march=native
       MARCH_NATIVE=1 ./zcutil/build.sh -j\$(nproc)   # -march=native (recommended)
       O3=1           ./zcutil/build.sh -j\$(nproc)   # -O3
-      EXTRA_CXXFLAGS="-flto" ./zcutil/build.sh ...   # arbitrary extra flags
+      LTO=1          ./zcutil/build.sh -j\$(nproc)   # -flto (link-time optimization)
+      EXTRA_CXXFLAGS="..." ./zcutil/build.sh ...     # arbitrary extra flags
   A -march=native binary is CPU-specific (won't run on a different CPU family).
+  LTO increases build time/memory; with GCC it auto-uses gcc-ar/ranlib/nm.
   Assertions are kept enabled (no -DNDEBUG) because they guard consensus.
 EOF
     exit 0
@@ -109,16 +111,20 @@ fi
 #   OPTIMIZE=1      ./zcutil/build.sh -j$(nproc)   # -O3 -march=native
 #   MARCH_NATIVE=1  ./zcutil/build.sh -j$(nproc)   # -march=native only (recommended)
 #   O3=1            ./zcutil/build.sh -j$(nproc)   # -O3 only
-#   EXTRA_CXXFLAGS="-flto" ./zcutil/build.sh ...   # arbitrary extra flags
+#   LTO=1           ./zcutil/build.sh -j$(nproc)   # -flto (link-time optimization)
+#   EXTRA_CXXFLAGS="..." ./zcutil/build.sh ...     # arbitrary extra flags
 #
 # Notes:
 #  * -march=native produces a CPU-specific binary (only runs on this CPU family)
 #    and gives most of the real-world win (hashing, serialization, LevelDB).
+#  * LTO increases build time and memory use; it needs -flto at both compile and
+#    link time (handled below).
 #  * Assertions are intentionally NOT disabled: they guard consensus-critical
 #    invariants, so we never pass -DNDEBUG.
 #  * config.site prepends the depends flags, so these appended flags win (the
 #    last -O on the command line is the effective one).
 PERF_CXXFLAGS=""
+PERF_LDFLAGS=""
 if [ "${OPTIMIZE-}" = "1" ]; then
     PERF_CXXFLAGS="-O3 -march=native"
 fi
@@ -128,17 +134,35 @@ fi
 if [ "${MARCH_NATIVE-}" = "1" ]; then
     PERF_CXXFLAGS="$PERF_CXXFLAGS -march=native"
 fi
+if [ "${LTO-}" = "1" ]; then
+    # -flto must be present at both compile and link time.
+    PERF_CXXFLAGS="$PERF_CXXFLAGS -flto"
+    PERF_LDFLAGS="$PERF_LDFLAGS -flto"
+fi
 PERF_CXXFLAGS="$PERF_CXXFLAGS ${EXTRA_CXXFLAGS-}"
 # Trim leading/trailing whitespace.
 PERF_CXXFLAGS="$(printf '%s' "$PERF_CXXFLAGS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+PERF_LDFLAGS="$(printf '%s' "$PERF_LDFLAGS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
 if [ -n "$PERF_CXXFLAGS" ]; then
     echo "build.sh: applying performance flags to the main build: $PERF_CXXFLAGS"
-    CONFIG_SITE="$PWD/depends/$HOST/share/config.site" \
-        CXXFLAGS="${CXXFLAGS-} $PERF_CXXFLAGS" \
-        CFLAGS="${CFLAGS-} $PERF_CXXFLAGS" \
-        ./configure $CONFIGURE_FLAGS
-else
-    CONFIG_SITE="$PWD/depends/$HOST/share/config.site" ./configure $CONFIGURE_FLAGS
+    export CXXFLAGS="${CXXFLAGS-} $PERF_CXXFLAGS"
+    export CFLAGS="${CFLAGS-} $PERF_CXXFLAGS"
+    if [ -n "$PERF_LDFLAGS" ]; then
+        export LDFLAGS="${LDFLAGS-} $PERF_LDFLAGS"
+    fi
+    # GCC LTO writes LTO objects into the static libraries this build creates and
+    # links (libbitcoin_*.a, libzcash.a, ...). The default ar/ranlib/nm don't
+    # understand them and linking fails with "plugin needed to handle lto object".
+    # Use the LTO-plugin-aware GCC wrappers when present and not already set, so
+    # that configure bakes them into the Makefiles. (Clang/lld need no special
+    # tools; clang users can override AR/RANLIB/NM, e.g. AR=llvm-ar.)
+    if [ "${LTO-}" = "1" ] && command -v gcc-ar >/dev/null 2>&1; then
+        export AR="${AR:-gcc-ar}"
+        export RANLIB="${RANLIB:-gcc-ranlib}"
+        export NM="${NM:-gcc-nm}"
+        echo "build.sh: LTO enabled; using AR=$AR RANLIB=$RANLIB NM=$NM"
+    fi
 fi
+CONFIG_SITE="$PWD/depends/$HOST/share/config.site" ./configure $CONFIGURE_FLAGS
 "$MAKE" "$@"

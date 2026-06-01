@@ -9,7 +9,7 @@ SHA256CMD="$(command -v sha256sum || echo shasum)"
 SHA256ARGS="$(command -v sha256sum >/dev/null || echo '-a 256')"
 
 function zcash_rpc {
-    ./src/zcash-cli -datadir="$DATADIR" -rpcuser=user -rpcpassword=password -rpcport=5983 "$@"
+    ./src/zclassic-cli -datadir="$DATADIR" -rpcuser=user -rpcpassword=password -rpcport=5983 "$@"
 }
 
 function zcash_rpc_slow {
@@ -26,7 +26,7 @@ function zcash_rpc_wait_for_start {
     zcash_rpc -rpcwait getinfo > /dev/null
 }
 
-function zcashd_generate {
+function zclassicd_generate {
     zcash_rpc generate 101 > /dev/null
 }
 
@@ -42,7 +42,7 @@ EOF
         ARCHIVE_RESULT=1
     fi
     if [ $ARCHIVE_RESULT -ne 0 ]; then
-        zcashd_stop
+        zclassicd_stop
         echo
         echo "Please download it and place it in the base directory of the repository."
         exit 1
@@ -56,7 +56,7 @@ function use_200k_benchmark {
     DATADIR="./benchmark-200k-UTXOs/node$1"
 }
 
-function zcashd_start {
+function zclassicd_start {
     case "$1" in
         sendtoaddress|loadwallet|listunspent)
             case "$2" in
@@ -67,7 +67,7 @@ function zcashd_start {
                     use_200k_benchmark 1
                     ;;
                 *)
-                    echo "Bad arguments to zcashd_start."
+                    echo "Bad arguments to zclassicd_start."
                     exit 1
             esac
             ;;
@@ -76,17 +76,17 @@ function zcashd_start {
             mkdir -p "$DATADIR/regtest"
             touch "$DATADIR/zcash.conf"
     esac
-    ./src/zcashd -regtest -datadir="$DATADIR" -rpcuser=user -rpcpassword=password -rpcport=5983 -showmetrics=0 &
+    ./src/zclassicd -regtest -datadir="$DATADIR" -rpcuser=user -rpcpassword=password -rpcport=5983 -showmetrics=0 &
     ZCASHD_PID=$!
     zcash_rpc_wait_for_start
 }
 
-function zcashd_stop {
+function zclassicd_stop {
     zcash_rpc stop > /dev/null
     wait $ZCASHD_PID
 }
 
-function zcashd_heaptrack_start {
+function zclassicd_heaptrack_start {
     TEST_NAME="$1"
     case "$1" in
         sendtoaddress|loadwallet|listunspent)
@@ -100,7 +100,7 @@ function zcashd_heaptrack_start {
                     TEST_NAME="${TEST_NAME}-200k-send"
                     ;;
                 *)
-                    echo "Bad arguments to zcashd_heaptrack_start."
+                    echo "Bad arguments to zclassicd_heaptrack_start."
                     exit 1
             esac
             ;;
@@ -109,27 +109,27 @@ function zcashd_heaptrack_start {
             mkdir -p "$DATADIR/regtest"
             touch "$DATADIR/zcash.conf"
     esac
-    heaptrack -o "${TEST_NAME}" ./src/zcashd -regtest -datadir="$DATADIR" -rpcuser=user -rpcpassword=password -rpcport=5983 -showmetrics=0 &
+    heaptrack -o "${TEST_NAME}" ./src/zclassicd -regtest -datadir="$DATADIR" -rpcuser=user -rpcpassword=password -rpcport=5983 -showmetrics=0 &
     ZCASHD_PID=$!
     zcash_rpc_wait_for_start
 }
 
-function zcashd_heaptrack_stop {
+function zclassicd_heaptrack_stop {
     zcash_rpc stop > /dev/null
     wait $ZCASHD_PID
 }
 
-function zcashd_valgrind_start {
+function zclassicd_valgrind_start {
     rm -rf "$DATADIR"
     mkdir -p "$DATADIR/regtest"
     touch "$DATADIR/zcash.conf"
     rm -f valgrind.out
-    valgrind --leak-check=yes -v --error-limit=no --log-file="valgrind.out" ./src/zcashd -regtest -datadir="$DATADIR" -rpcuser=user -rpcpassword=password -rpcport=5983 -showmetrics=0 &
+    valgrind --leak-check=yes -v --error-limit=no --log-file="valgrind.out" ./src/zclassicd -regtest -datadir="$DATADIR" -rpcuser=user -rpcpassword=password -rpcport=5983 -showmetrics=0 &
     ZCASHD_PID=$!
     zcash_rpc_wait_for_start
 }
 
-function zcashd_valgrind_stop {
+function zclassicd_valgrind_stop {
     zcash_rpc stop > /dev/null
     wait $ZCASHD_PID
     cat valgrind.out
@@ -147,7 +147,7 @@ EOF
         ARCHIVE_RESULT=1
     fi
     if [ $ARCHIVE_RESULT -ne 0 ]; then
-        zcashd_stop
+        zclassicd_stop
         echo
         echo "Please generate it using qa/zcash/create_benchmark_archive.py"
         echo "and place it in the base directory of the repository."
@@ -181,15 +181,15 @@ case "$1" in
     *)
         case "$2" in
             verifyjoinsplit)
-                zcashd_start "${@:2}"
+                zclassicd_start "${@:2}"
                 RAWJOINSPLIT=$(zcash_rpc zcsamplejoinsplit)
-                zcashd_stop
+                zclassicd_stop
         esac
 esac
 
 case "$1" in
     time)
-        zcashd_start "${@:2}"
+        zclassicd_start "${@:2}"
         case "$2" in
             sleep)
                 zcash_rpc zcbenchmark sleep 10
@@ -252,14 +252,14 @@ case "$1" in
                 zcash_rpc zcbenchmark listunspent 10
                 ;;
             *)
-                zcashd_stop
+                zclassicd_stop
                 echo "Bad arguments to time."
                 exit 1
         esac
-        zcashd_stop
+        zclassicd_stop
         ;;
     memory)
-        zcashd_heaptrack_start "${@:2}"
+        zclassicd_heaptrack_start "${@:2}"
         case "$2" in
             sleep)
                 zcash_rpc zcbenchmark sleep 1
@@ -322,14 +322,14 @@ case "$1" in
                 zcash_rpc zcbenchmark listunspent 1
                 ;;
             *)
-                zcashd_heaptrack_stop
+                zclassicd_heaptrack_stop
                 echo "Bad arguments to memory."
                 exit 1
         esac
-        zcashd_heaptrack_stop
+        zclassicd_heaptrack_stop
         ;;
     valgrind)
-        zcashd_valgrind_start
+        zclassicd_valgrind_start
         case "$2" in
             sleep)
                 zcash_rpc zcbenchmark sleep 1
@@ -380,11 +380,11 @@ case "$1" in
                 zcash_rpc zcbenchmark connectblockorchard 1
                 ;;
             *)
-                zcashd_valgrind_stop
+                zclassicd_valgrind_stop
                 echo "Bad arguments to valgrind."
                 exit 1
         esac
-        zcashd_valgrind_stop
+        zclassicd_valgrind_stop
         rm -f valgrind.out
         ;;
     valgrind-tests)

@@ -53,14 +53,14 @@ RE_FORTIFY_AVAILABLE = re.compile('FORTIFY_SOURCE support available.*Yes')
 RE_FORTIFY_USED = re.compile('Binary compiled with FORTIFY_SOURCE support.*Yes')
 
 CXX_BINARIES = [
-    'src/zcashd',
-    'src/zcash-cli',
+    'src/zclassicd',
+    'src/zclassic-cli',
     'src/zcash-gtest',
-    'src/zcash-tx',
+    'src/zclassic-tx',
     'src/test/test_bitcoin',
 ]
 RUST_BINARIES = [
-    'src/zcashd-wallet-tool',
+    'src/zclassicd-wallet-tool',
 ]
 
 def test_rpath_runpath(filename):
@@ -98,8 +98,8 @@ def check_security_hardening():
         ret &= subprocess.call(['make', '-C', repofile('src'), 'check-security']) == 0
     else:
         # Equivalent to make check-security (this is just for CI purpose)
-        bin_programs = ['src/zcashd', 'src/zcash-cli', 'src/zcash-tx', 'src/bench/bench_bitcoin']  # Replace with actual values
-        bin_scripts = ['src/zcashd-wallet-tool']   # Replace with actual values
+        bin_programs = ['src/zclassicd', 'src/zclassic-cli', 'src/zclassic-tx', 'src/bench/bench_bitcoin']  # Replace with actual values
+        bin_scripts = ['src/zclassicd-wallet-tool']   # Replace with actual values
 
         print(f"Checking binary security of {bin_programs + bin_scripts}...")
 
@@ -112,8 +112,8 @@ def check_security_hardening():
             ret &= subprocess.call(command) == 0
 
     # The remaining checks are only for ELF binaries
-    # Assume that if zcashd is an ELF binary, they all are
-    with open(repofile('src/zcashd'), 'rb') as f:
+    # Assume that if zclassicd is an ELF binary, they all are
+    with open(repofile('src/zclassicd'), 'rb') as f:
         magic = f.read(4)
         if not magic.startswith(b'\x7fELF'):
             return ret

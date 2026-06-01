@@ -2,10 +2,10 @@
 version: '3'
 
 services:
-  zcashd:
+  zclassicd:
     build: .
     env_file:
       - .env
     volumes:
-      - ./zcash-params-dir:/srv/zcashd/.zcash-params
-      - ./zcash-data-dir:/srv/zcashd/.zcash
+      - ./zcash-params-dir:/srv/zclassicd/.zcash-params
+      - ./zcash-data-dir:/srv/zclassicd/.zclassic

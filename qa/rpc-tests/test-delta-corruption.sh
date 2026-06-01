@@ -25,7 +25,7 @@ FIXED_REF=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse H
 echo "=== Build vulnerable binary (v6.12.0) ==="
 if ! (git -c advice.detachedHead=false checkout v6.12.0 &&
       ./zcutil/build.sh -j"$NPROC" &&
-      cp src/zcashd src/zcashd-vulnerable); then
+      cp src/zclassicd src/zclassicd-vulnerable); then
     echo >&2 "WARNING: failed while building v6.12.0. You may need to run 'git checkout $FIXED_REF' to return to your original branch."
     exit 1
 fi
@@ -35,4 +35,4 @@ git checkout "$FIXED_REF"
 ./zcutil/build.sh -j"$NPROC"
 
 echo "=== Run corruption detection test ==="
-qa/rpc-tests/manual-corruption-test.py --vulnerable-binary src/zcashd-vulnerable
+qa/rpc-tests/manual-corruption-test.py --vulnerable-binary src/zclassicd-vulnerable

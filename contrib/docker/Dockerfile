@@ -19,10 +19,10 @@ RUN if [ -z "$ZCASH_VERSION" ]; \
     then apt-get install -y zcash; \
     else apt-get install -y zcash=$ZCASH_VERSION; \
     fi \
-  && zcashd --version \
+  && zclassicd --version \
   && rm -rf /var/lib/apt/lists/*
 
-ARG ZCASHD_USER=zcashd
+ARG ZCASHD_USER=zclassicd
 ARG ZCASHD_UID=2001
 
 RUN useradd --home-dir "/srv/$ZCASHD_USER" \
@@ -31,9 +31,9 @@ RUN useradd --home-dir "/srv/$ZCASHD_USER" \
             --uid "$ZCASHD_UID" \
             "$ZCASHD_USER"
 
-RUN mkdir -p "/srv/$ZCASHD_USER/.zcash/" \
-    && touch "/srv/$ZCASHD_USER/.zcash/zcash.conf" \
-    && chown -R zcashd "/srv/$ZCASHD_USER"
+RUN mkdir -p "/srv/$ZCASHD_USER/.zclassic/" \
+    && touch "/srv/$ZCASHD_USER/.zclassic/zcash.conf" \
+    && chown -R zclassicd "/srv/$ZCASHD_USER"
 
 WORKDIR "/srv/$ZCASHD_USER"
 ENV HOME="/srv/$ZCASHD_USER"

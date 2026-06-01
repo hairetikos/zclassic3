@@ -4,9 +4,9 @@
 #
 # Usage:
 #
-# ZCASHD=./src/zcashd ZCASHCLI=./src/zcash-cli ./qa/zcash/smoke_tests.py --wallet=wallet.smoketest.dat "$HOME/.zcash"
+# ZCASHD=./src/zclassicd ZCASHCLI=./src/zclassic-cli ./qa/zcash/smoke_tests.py --wallet=wallet.smoketest.dat "$HOME/.zclassic"
 # 
-# ZCASHD=./src/zcashd ZCASHCLI=./src/zcash-cli ./qa/zcash/smoke_tests.py --wallet=wallet.smoketest.dat "$HOME/.zcash" --automate --use-faucet
+# ZCASHD=./src/zclassicd ZCASHCLI=./src/zclassic-cli ./qa/zcash/smoke_tests.py --wallet=wallet.smoketest.dat "$HOME/.zclassic" --automate --use-faucet
 #
 
 import argparse
@@ -32,12 +32,12 @@ URL_FAUCET_TAP = 'https://faucet.testnet.z.cash/'
 
 # (case, expected_mainnet, expected_testnet)
 SMOKE_TESTS = [
-    # zcashd start/stop/restart flows
-    ('1a', True, True), # zcashd start
-    ('1b', True, True), # Graceful zcashd stop
-    ('1c', True, True), # Ungraceful zcashd stop
-    ('1d', True, True), # zcashd start; graceful zcashd stop; zcashd start
-    ('1e', True, True), # zcashd start; ungraceful zcashd stop; zcashd start
+    # zclassicd start/stop/restart flows
+    ('1a', True, True), # zclassicd start
+    ('1b', True, True), # Graceful zclassicd stop
+    ('1c', True, True), # Ungraceful zclassicd stop
+    ('1d', True, True), # zclassicd start; graceful zclassicd stop; zclassicd start
+    ('1e', True, True), # zclassicd start; ungraceful zclassicd stop; zclassicd start
     # Control
     ('2a', True, True), # Run getinfo
     ('2b', True, True), # Run help
@@ -557,16 +557,16 @@ def run_stage(stage, zcash):
 #
 
 class ZcashNode(object):
-    def __init__(self, args, zcashd=None, zcash_cli=None):
-        if zcashd is None:
-            zcashd = os.getenv('ZCASHD', 'zcashd')
+    def __init__(self, args, zclassicd=None, zcash_cli=None):
+        if zclassicd is None:
+            zclassicd = os.getenv('ZCASHD', 'zclassicd')
         if zcash_cli is None:
-            zcash_cli = os.getenv('ZCASHCLI', 'zcash-cli')
+            zcash_cli = os.getenv('ZCASHCLI', 'zclassic-cli')
 
         self.__datadir = args.datadir
         self.__wallet = args.wallet
         self.__testnet = not args.mainnet
-        self.__zcashd = zcashd
+        self.__zclassicd = zclassicd
         self.__zcash_cli = zcash_cli
         self.__process = None
         self.__proxy = None
@@ -582,7 +582,7 @@ class ZcashNode(object):
         rpcpassword = 'st'
 
         args = [
-            self.__zcashd,
+            self.__zclassicd,
             '-datadir=%s' % self.__datadir,
             '-wallet=%s' % self.__wallet,
             '-rpcuser=%s' % rpcuser,
@@ -615,10 +615,10 @@ class ZcashNode(object):
 
         devnull = open('/dev/null', 'w+', encoding='utf8')
         if os.getenv('PYTHON_DEBUG', ''):
-            print('start_node: zcashd started, calling zcash-cli -rpcwait getblockcount')
+            print('start_node: zclassicd started, calling zclassic-cli -rpcwait getblockcount')
         subprocess.check_call(cli_args, stdout=devnull)
         if os.getenv('PYTHON_DEBUG', ''):
-            print('start_node: calling zcash-cli -rpcwait getblockcount returned')
+            print('start_node: calling zclassic-cli -rpcwait getblockcount returned')
         devnull.close()
 
         rpcuserpass = '%s:%s' % (rpcuser, rpcpassword)
@@ -693,10 +693,10 @@ def main():
             print('--automate requires --use-faucet')
             sys.exit(1)
 
-    # Start zcashd
+    # Start zclassicd
     zcash = ZcashNode(args)
     print('Start time: %s' % TIME_STARTED)
-    print('Starting zcashd...')
+    print('Starting zclassicd...')
     zcash.start()
     print()
 
@@ -705,8 +705,8 @@ def main():
     for s in args.stage:
         results.update(run_stage(s, zcash))
 
-    # Stop zcashd
-    print('Stopping zcashd...')
+    # Stop zclassicd
+    print('Stopping zclassicd...')
     zcash.stop()
 
     passed = True

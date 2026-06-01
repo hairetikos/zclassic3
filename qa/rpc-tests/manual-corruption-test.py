@@ -13,13 +13,13 @@ Prerequisites:
   1. Save the current commit and build the vulnerable (v6.12.0) binary:
        export FIXED_COMMIT=$(git rev-parse HEAD)
        git checkout v6.12.0 && ./zcutil/build.sh -j$(nproc)
-       cp src/zcashd src/zcashd-vulnerable
+       cp src/zclassicd src/zclassicd-vulnerable
 
   2. Build the fixed binary:
        git checkout "$FIXED_COMMIT" && ./zcutil/build.sh -j$(nproc)
 
   3. Run this test:
-       qa/rpc-tests/manual-corruption-test.py --vulnerable-binary src/zcashd-vulnerable
+       qa/rpc-tests/manual-corruption-test.py --vulnerable-binary src/zclassicd-vulnerable
 
 Or run qa/rpc-tests/test-delta-corruption.sh to do all steps automatically.
 """
@@ -106,8 +106,8 @@ class CorruptionDetectionTest(BitcoinTestFramework):
 
     def add_options(self, parser):
         parser.add_option('--vulnerable-binary', dest='vulnerable_binary',
-                          default='src/zcashd-vulnerable',
-                          help='Path to the vulnerable zcashd binary')
+                          default='src/zclassicd-vulnerable',
+                          help='Path to the vulnerable zclassicd binary')
 
     def setup_network(self, split=False):
         # Start with the vulnerable binary

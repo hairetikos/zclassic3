@@ -223,6 +223,15 @@ File: `pow.cpp`, `consensus/params.cpp`, `chainparams.cpp`.
   comments, expiry-threshold pre-NU5 path.
 - Apply the wallet-side "neuter" gates so dormant features don't produce dead
   artifacts (see the dedicated section below).
+- **Disable the MTP-relative future-timestamp soft fork.** Zcash's
+  `nFutureTimestampSoftForkHeight` rule (block time must be ≤ MTP +
+  `MAX_FUTURE_BLOCK_TIME_MTP`, v2.1.1-1) postdates the Zclassic fork; the
+  historical Zclassic chain has blocks that violate it, so syncing from genesis
+  fails intermittently with "too far ahead of median-time-past". Set
+  `nFutureTimestampSoftForkHeight` to a never-activating height on all networks
+  (done in `consensus/params.h` default + the mainnet override). Only the classic
+  2-hour adjusted-time rule (`CheckBlockHeader`) and the MTP lower bound apply,
+  matching the reference (Zcash 1.0.x).
 
 ### Keeping Orchard / unified addresses / v5 dormant but enableable
 

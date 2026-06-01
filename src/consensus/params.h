@@ -16,6 +16,7 @@
 
 #include <optional>
 #include <variant>
+#include <limits>
 
 namespace Consensus {
 
@@ -489,14 +490,16 @@ struct Params {
      * using Zcash code, the soft fork rule would be enabled from the start so that
      * miners would limit their timestamps accordingly.
      *
-     * For testnet, the future timestamp soft fork rule was violated for many
-     * blocks prior to Blossom activation. At Blossom, the time threshold for the
-     * (testnet-specific) minimum difficulty rule was changed in such a way that
-     * starting from shortly after the Blossom activation, no further blocks
-     * violate the soft fork rule. So for testnet we override the soft fork
-     * activation height in chainparams.cpp.
+     * Zclassic forked from Zcash before this MTP-relative future-timestamp soft
+     * fork was introduced (Zcash v2.1.1-1), and the historical Zclassic chain
+     * contains blocks whose timestamps are further ahead of the median-time-past
+     * than MAX_FUTURE_BLOCK_TIME_MTP allows. Zclassic therefore never enforced
+     * this rule, so it is disabled by default (a height that never activates).
+     * Only the classic "2 hours ahead of adjusted time" rule (in CheckBlockHeader)
+     * and the median-time-past lower bound apply. A future Zclassic network
+     * upgrade could enable this soft fork by setting a real activation height.
      */
-    int nFutureTimestampSoftForkHeight = 2;
+    int nFutureTimestampSoftForkHeight = std::numeric_limits<int>::max();
 
     /** Proof of work parameters */
     unsigned int nEquihashN = 0;

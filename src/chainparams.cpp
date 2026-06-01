@@ -15,6 +15,7 @@
 #include "util/strencodings.h"
 
 #include <assert.h>
+#include <limits>
 #include <optional>
 #include <variant>
 
@@ -422,11 +423,12 @@ public:
 
         static_assert(6 * Consensus::POST_BLOSSOM_POW_TARGET_SPACING * 7 < MAX_FUTURE_BLOCK_TIME_MTP - 60,
                       "MAX_FUTURE_BLOCK_TIME_MTP is too low given block target spacing");
-        // NOTE (consensus phase / Phase 5): the MTP-based future-timestamp soft fork
-        // is a Zcash-only rule that Zclassic never had. It must not derive from the
-        // now-disabled Blossom height. Leaving the default here; the correct value
-        // for Zclassic consensus parity is revisited when porting the PoW phase.
-        consensus.nFutureTimestampSoftForkHeight = 2;
+        // The MTP-relative future-timestamp soft fork (Zcash v2.1.1-1) is a
+        // Zcash-only rule that Zclassic never enforced; the historical Zclassic
+        // chain contains blocks whose timestamps exceed MTP + MAX_FUTURE_BLOCK_TIME_MTP.
+        // It is left disabled (see consensus/params.h); only the classic 2-hour
+        // adjusted-time rule and the MTP lower bound apply.
+        consensus.nFutureTimestampSoftForkHeight = std::numeric_limits<int>::max();
 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork = uint256S("0x0000000000000000000000000000000000000000000000000000000000000000");

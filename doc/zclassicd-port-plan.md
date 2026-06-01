@@ -337,9 +337,35 @@ What this means structurally:
   - Removed the upstream mandatory "zcashd is being deprecated in 2025 / migrate
     to zebrad+Zallet" startup gate; user-facing strings rebranded.
   - `CLIENT_NAME` stays `MagicBean` so the P2P user-agent matches the ZCL network.
-- Remaining cosmetic/packaging follow-ups (non-blocking): the Rust-built
-  `zcashd-wallet-tool` binary name, `doc/man/*` man pages, and `contrib/`
-  packaging/systemd files still carry the old names.
+- Cosmetic rebrand follow-ups (DONE): the Rust wallet helper is renamed to
+  `zclassicd-wallet-tool` (Cargo bin + `src/Makefile.am`; its `wallet_tool.rs`
+  also now shells out to `zclassic-cli` and defaults to `zclassic.conf` /
+  `~/.zclassic`). Man pages (`doc/man/*`) and bash-completions are renamed and
+  rebranded; `gen-manpages.sh` updated. Debian packaging (`contrib/debian/*`,
+  `zcutil/build-debian-package.sh`), the Docker example, and the qa test
+  framework are rebranded to `zclassic*`. The Sapling/Sprout params dir stays
+  `~/.zcash-params` throughout (the node's `ZC_GetParamsDir` looks there). There
+  is no systemd unit in this tree. Leftover `zcashd` mentions in individual
+  rpc-test file *comments* are intentionally left (non-functional).
+
+### Deprecated-RPC policy — allowed by default (Zclassic)
+Upstream zcashd disables a set of "deprecated" RPC methods by default and forces
+`-allowdeprecated=<feature>` to use them. On Zclassic these are basic, expected
+wallet actions (Sprout + Sapling, no Orchard yet), so the wallet must not block
+them. In `src/deprecation.h` all entries were moved from `DEFAULT_DENY_DEPRECATED`
+into `DEFAULT_ALLOW_DEPRECATED`, so every deprecated feature
+(`getnewaddress`, `getrawchangeaddress`, `z_getnewaddress`, `z_getbalance`,
+`z_listaddresses`, `legacy_privacy`, `wallettxvjoinsplit`, `gbt_oldhashes`,
+`addrtype`, `deprecationinfo_deprecationheight`) is enabled by default. The user
+stays in control: `-allowdeprecated=none` disables them all (upstream
+strictness), and `-allowdeprecated=<feature>` still names individual features.
+
+> Caveat: this default-enables `legacy_privacy`, which (unlike the others, which
+> are just blocked methods) changes the **default privacy policy** for
+> `z_sendmany` to the more permissive "LegacyCompat" — convenient on a chain with
+> active transparent/Sprout use, but a privacy-default change. To keep the strict
+> privacy default while still allowing the address/balance methods, move only
+> `legacy_privacy` back into `DEFAULT_DENY_DEPRECATED`.
 
 ### Phase 9 — Verification (the real acceptance test)  ✅ PASSED (genesis→tip)
 - The node performed a full IBD against the **live ZCL network from genesis to

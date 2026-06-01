@@ -16,6 +16,7 @@
 
 #include <optional>
 #include <variant>
+#include <limits>
 
 namespace Consensus {
 
@@ -36,6 +37,15 @@ enum UpgradeIndex : uint32_t {
     UPGRADE_TESTDUMMY,
     UPGRADE_OVERWINTER,
     UPGRADE_SAPLING,
+    // Zclassic's own post-Sapling upgrades. These are inserted here (in ascending
+    // activation-height order) so that on Zclassic the sequence of *enabled*
+    // upgrades is Overwinter/Sapling -> Bubbles -> DiffAdj -> Buttercup. The Zcash
+    // upgrades below (Blossom..NU6.1) remain defined but disabled on Zclassic;
+    // keeping them intact preserves the ability to enable Orchard/NU5 etc. via a
+    // future Zclassic network upgrade (see doc/zclassicd-port-plan.md).
+    UPGRADE_BUBBLES,
+    UPGRADE_DIFFADJ,
+    UPGRADE_BUTTERCUP,
     UPGRADE_BLOSSOM,
     UPGRADE_HEARTWOOD,
     UPGRADE_CANOPY,
@@ -480,14 +490,16 @@ struct Params {
      * using Zcash code, the soft fork rule would be enabled from the start so that
      * miners would limit their timestamps accordingly.
      *
-     * For testnet, the future timestamp soft fork rule was violated for many
-     * blocks prior to Blossom activation. At Blossom, the time threshold for the
-     * (testnet-specific) minimum difficulty rule was changed in such a way that
-     * starting from shortly after the Blossom activation, no further blocks
-     * violate the soft fork rule. So for testnet we override the soft fork
-     * activation height in chainparams.cpp.
+     * Zclassic forked from Zcash before this MTP-relative future-timestamp soft
+     * fork was introduced (Zcash v2.1.1-1), and the historical Zclassic chain
+     * contains blocks whose timestamps are further ahead of the median-time-past
+     * than MAX_FUTURE_BLOCK_TIME_MTP allows. Zclassic therefore never enforced
+     * this rule, so it is disabled by default (a height that never activates).
+     * Only the classic "2 hours ahead of adjusted time" rule (in CheckBlockHeader)
+     * and the median-time-past lower bound apply. A future Zclassic network
+     * upgrade could enable this soft fork by setting a real activation height.
      */
-    int nFutureTimestampSoftForkHeight = 2;
+    int nFutureTimestampSoftForkHeight = std::numeric_limits<int>::max();
 
     /** Proof of work parameters */
     unsigned int nEquihashN = 0;
@@ -501,6 +513,13 @@ struct Params {
     int64_t nPreBlossomPowTargetSpacing;
     int64_t nPostBlossomPowTargetSpacing;
 
+    /**
+     * Zclassic-specific: when true, GetNextWorkRequired temporarily relaxes the
+     * difficulty for the first nPowAveragingWindow blocks after the DiffAdj and
+     * Buttercup upgrade activation heights (the "graduated fork scaling" rule).
+     * Enabled on mainnet; disabled on testnet/regtest (matches the reference).
+     */
+    bool scaleDifficultyAtUpgradeFork = false;
     int64_t PoWTargetSpacing(int nHeight) const;
     int64_t AveragingWindowTimespan(int nHeight) const;
     int64_t MinActualTimespan(int nHeight) const;

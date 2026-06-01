@@ -144,17 +144,11 @@ public:
                         }
                     });
                 }
-            } else if (nHeight <= chainparams.GetConsensus().GetLastFoundersRewardBlockHeight(nHeight)) {
-                // Founders reward is 20% of the block subsidy
-                const auto vFoundersReward = miner_reward / 5;
-                // Take some reward away from us
-                miner_reward -= vFoundersReward;
-                // And give it to the founders
-                mtx.vout.push_back(CTxOut(vFoundersReward, chainparams.GetFoundersRewardScriptAtHeight(nHeight)));
-            } else {
-                // Founders reward ends without replacement if Canopy is not activated by the
-                // last Founders' Reward block height + 1.
             }
+            // Zclassic has no Founders' Reward: the miner keeps 100% of the block
+            // subsidy (no 20% founders output is created). The Canopy funding-stream
+            // branch above is retained but never executes because Canopy is not
+            // activated on Zclassic.
 
             if (chainparams.GetConsensus().NetworkUpgradeActive(nHeight, Consensus::UPGRADE_NU6_1)) {
                 auto disbursements = consensus.GetLockboxDisbursementsForHeight(nHeight);

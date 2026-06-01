@@ -56,9 +56,18 @@ unsigned int nOrchardActionLimit = DEFAULT_ORCHARD_ACTION_LIMIT;
 const char * DEFAULT_WALLET_DAT = "wallet.dat";
 
 std::set<ReceiverType> CWallet::DefaultReceiverTypes(int nHeight) {
-    // For now, just ignore the height information because the default
-    // is always the same.
-    return {ReceiverType::P2PKH, ReceiverType::Sapling, ReceiverType::Orchard};
+    // Zclassic keeps the Orchard / unified-address machinery compiled but dormant:
+    // an Orchard receiver is only included once NU5 is active. Since NU5 is not
+    // activated on Zclassic today, unified addresses contain only P2PKH + Sapling
+    // receivers and never advertise a dead Orchard receiver. If a future Zclassic
+    // network upgrade activates NU5, Orchard receivers begin appearing in newly
+    // generated unified addresses automatically at the activation height, with no
+    // further code change required.
+    std::set<ReceiverType> types = {ReceiverType::P2PKH, ReceiverType::Sapling};
+    if (Params().GetConsensus().NetworkUpgradeActive(nHeight, Consensus::UPGRADE_NU5)) {
+        types.insert(ReceiverType::Orchard);
+    }
+    return types;
 }
 
 /** @defgroup mapWallet

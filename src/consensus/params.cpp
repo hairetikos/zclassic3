@@ -105,21 +105,18 @@ namespace Consensus {
     }
 
     int Params::Halving(int nHeight) const {
-        // zip208
-        // Halving(height) :=
-        // floor((height - SlowStartShift) / PreBlossomHalvingInterval), if not IsBlossomActivated(height)
-        // floor((BlossomActivationHeight - SlowStartShift) / PreBlossomHalvingInterval + (height - BlossomActivationHeight) / PostBlossomHalvingInterval), otherwise
-        if (NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BLOSSOM)) {
-            int64_t blossomActivationHeight = vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight;
-            // Ideally we would say:
-            // halvings = (blossomActivationHeight - SubsidySlowStartShift()) / nPreBlossomSubsidyHalvingInterval
-            //     + (nHeight - blossomActivationHeight) / nPostBlossomSubsidyHalvingInterval;
-            // But, (blossomActivationHeight - SubsidySlowStartShift()) / nPreBlossomSubsidyHalvingInterval
-            // would need to be treated as a rational number in order for this to work.
-            // Define scaledHalvings := halvings * nPostBlossomSubsidyHalvingInterval;
-            int64_t scaledHalvings = ((blossomActivationHeight - SubsidySlowStartShift()) * Consensus::BLOSSOM_POW_TARGET_SPACING_RATIO)
-                + (nHeight - blossomActivationHeight);
-            return (int) (scaledHalvings / nPostBlossomSubsidyHalvingInterval);
+        // Zclassic halving schedule (keyed on the Buttercup upgrade, which is
+        // Zclassic's analogue of Blossom: it halves the block spacing 150s -> 75s
+        // and doubles the halving interval 840000 -> 1680000). The Buttercup branch
+        // additionally applies a fixed "+3" (triple-halving) offset, matching the
+        // live Zclassic chain. The pre/post-Buttercup halving intervals reuse the
+        // nPre/PostBlossomSubsidyHalvingInterval fields (identical values:
+        // 840000 / 1680000).
+        if (NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP)) {
+            int buttercupActivationHeight = vUpgrades[Consensus::UPGRADE_BUTTERCUP].nActivationHeight;
+            int halvings = (nHeight - SubsidySlowStartShift() - buttercupActivationHeight)
+                / nPostBlossomSubsidyHalvingInterval;
+            return halvings + 3; // Triple halving
         } else {
             return (nHeight - SubsidySlowStartShift()) / nPreBlossomSubsidyHalvingInterval;
         }
@@ -386,13 +383,12 @@ namespace Consensus {
         if (halvings >= 64)
             return 0;
 
-        // zip208
-        // BlockSubsidy(height) :=
-        // SlowStartRate · height, if height < SlowStartInterval / 2
-        // SlowStartRate · (height + 1), if SlowStartInterval / 2 ≤ height and height < SlowStartInterval
-        // floor(MaxBlockSubsidy / 2^Halving(height)), if SlowStartInterval ≤ height and not IsBlossomActivated(height)
-        // floor(MaxBlockSubsidy / (BlossomPoWTargetSpacingRatio · 2^Halving(height))), otherwise
-        if (this->NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BLOSSOM)) {
+        // Zclassic block subsidy. From the Buttercup upgrade onwards the base
+        // subsidy is divided by the Buttercup spacing ratio (2), giving a 6.25
+        // base that is then halved per Halving(height). Before Buttercup the
+        // subsidy is 12.5 halved per Halving(height). (BUTTERCUP and BLOSSOM share
+        // the same spacing ratio of 2, so the existing ratio constant is reused.)
+        if (this->NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP)) {
             return (nSubsidy / Consensus::BLOSSOM_POW_TARGET_SPACING_RATIO) >> halvings;
         } else {
             // Subsidy is cut in half every 840,000 blocks which will occur approximately every 4 years.
@@ -474,12 +470,11 @@ namespace Consensus {
     };
 
     int64_t Params::PoWTargetSpacing(int nHeight) const {
-        // zip208
-        // PoWTargetSpacing(height) :=
-        // PreBlossomPoWTargetSpacing, if not IsBlossomActivated(height)
-        // PostBlossomPoWTargetSpacing, otherwise.
-        bool blossomActive = NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BLOSSOM);
-        return blossomActive ? nPostBlossomPowTargetSpacing : nPreBlossomPowTargetSpacing;
+        // Zclassic: block target spacing changes from 150s to 75s at the Buttercup
+        // upgrade (Zclassic's analogue of Blossom). The nPre/PostBlossomPowTargetSpacing
+        // fields hold the correct values (150 / 75).
+        bool buttercupActive = NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP);
+        return buttercupActive ? nPostBlossomPowTargetSpacing : nPreBlossomPowTargetSpacing;
     }
 
     int64_t Params::AveragingWindowTimespan(int nHeight) const {

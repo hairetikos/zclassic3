@@ -15,6 +15,7 @@
 #include "util/strencodings.h"
 
 #include <assert.h>
+#include <limits>
 #include <optional>
 #include <variant>
 
@@ -33,7 +34,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
     txNew.nVersion = 1;
     txNew.vin.resize(1);
     txNew.vout.resize(1);
-    txNew.vin[0].scriptSig = CScript() << 520617983 << CScriptNum(4) << std::vector<unsigned char>((const unsigned char*)pszTimestamp, (const unsigned char*)pszTimestamp + strlen(pszTimestamp));
+    txNew.vin[0].scriptSig = CScript() << 486604799 << CScriptNum(4) << std::vector<unsigned char>((const unsigned char*)pszTimestamp, (const unsigned char*)pszTimestamp + strlen(pszTimestamp));
     txNew.vout[0].nValue = genesisReward;
     txNew.vout[0].scriptPubKey = genesisOutputScript;
 
@@ -65,7 +66,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, const uint256& nNonce, const std::vector<unsigned char>& nSolution, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    const char* pszTimestamp = "Zcash0b9c4eef8b7cc417ee5001e3500984b6fea35683a7cac141a043c42064835d34";
+    const char* pszTimestamp = "Zclassic860413afe207aa173afee4fcfa9166dc745651c754a41ea8f155646f5aa828ac";
     const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nSolution, nBits, nVersion, genesisReward);
 }
@@ -87,10 +88,13 @@ class CMainParams : public CChainParams {
 public:
     CMainParams() {
         keyConstants.strNetworkID = "main";
-        strCurrencyUnits = "ZEC";
-        keyConstants.bip44CoinType = 133; // As registered in https://github.com/satoshilabs/slips/blob/master/slip-0044.md
+        strCurrencyUnits = "ZCL";
+        keyConstants.bip44CoinType = 147; // As registered in https://github.com/satoshilabs/slips/blob/master/slip-0044.md
         consensus.fCoinbaseMustBeShielded = true;
-        consensus.nSubsidySlowStartInterval = 20000;
+        // Zclassic uses a 2-block mining slow start (height 0 -> 0, height 1 ->
+        // 12.5, height 2+ -> full schedule). The pre/post-Blossom halving-interval
+        // fields hold Zclassic's pre/post-Buttercup intervals (840000 / 1680000).
+        consensus.nSubsidySlowStartInterval = 2;
         consensus.nPreBlossomSubsidyHalvingInterval = Consensus::PRE_BLOSSOM_HALVING_INTERVAL;
         consensus.nPostBlossomSubsidyHalvingInterval = POST_BLOSSOM_HALVING_INTERVAL(Consensus::PRE_BLOSSOM_HALVING_INTERVAL);
         consensus.nMajorityEnforceBlockUpgrade = 750;
@@ -109,40 +113,46 @@ public:
         consensus.nPostBlossomPowTargetSpacing = Consensus::POST_BLOSSOM_POW_TARGET_SPACING;
         consensus.nPowAllowMinDifficultyBlocksAfterHeight = std::nullopt;
         consensus.fPowNoRetargeting = false;
+        consensus.scaleDifficultyAtUpgradeFork = true;
         consensus.vUpgrades[Consensus::BASE_SPROUT].nProtocolVersion = 170002;
         consensus.vUpgrades[Consensus::BASE_SPROUT].nActivationHeight =
             Consensus::NetworkUpgrade::ALWAYS_ACTIVE;
         consensus.vUpgrades[Consensus::UPGRADE_TESTDUMMY].nProtocolVersion = 170002;
         consensus.vUpgrades[Consensus::UPGRADE_TESTDUMMY].nActivationHeight =
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        // Zclassic activated Overwinter and Sapling simultaneously at height 476969.
         consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nProtocolVersion = 170005;
-        consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nActivationHeight = 347500;
-        consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].hashActivationBlock =
-            uint256S("0000000003761c0d0c3974b54bdb425613bbb1eaadd6e70b764de82f195ea243");
+        consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nActivationHeight = 476969;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nProtocolVersion = 170007;
-        consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight = 419200;
-        consensus.vUpgrades[Consensus::UPGRADE_SAPLING].hashActivationBlock =
-            uint256S("00000000025a57200d898ac7f21e26bf29028bbe96ec46e05b2c17cc9db9e4f3");
+        consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight = 476969;
+        // Zclassic's own post-Sapling upgrades.
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nProtocolVersion = 170009;
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nActivationHeight = 585318;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nProtocolVersion = 170010;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nActivationHeight = 585322;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nProtocolVersion = 170011;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nActivationHeight = 707000;
+        // Zclassic never activated Blossom, Heartwood, Canopy, NU5, NU6 or NU6.1.
+        // These Zcash upgrades remain defined but disabled (see the upgrade-table
+        // note in consensus/params.h).
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nProtocolVersion = 170009;
-        consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight = 653600;
-        consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].hashActivationBlock =
-            uint256S("00000000020bebb33c1b34b67a982a328ab212a206dacbe561a7cc94aab3e9bb");
+        consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_HEARTWOOD].nProtocolVersion = 170011;
-        consensus.vUpgrades[Consensus::UPGRADE_HEARTWOOD].nActivationHeight = 903000;
-        consensus.vUpgrades[Consensus::UPGRADE_HEARTWOOD].hashActivationBlock =
-            uint256S("0000000000aad1c8698964a93c35ecf8b4d05e848de9e2fe7606067139be5643");
+        consensus.vUpgrades[Consensus::UPGRADE_HEARTWOOD].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_CANOPY].nProtocolVersion = 170013;
-        consensus.vUpgrades[Consensus::UPGRADE_CANOPY].nActivationHeight = 1046400;
-        consensus.vUpgrades[Consensus::UPGRADE_CANOPY].hashActivationBlock =
-            uint256S("00000000002038016f976744c369dce7419fca30e7171dfac703af5e5f7ad1d4");
+        consensus.vUpgrades[Consensus::UPGRADE_CANOPY].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_NU5].nProtocolVersion = 170100;
-        consensus.vUpgrades[Consensus::UPGRADE_NU5].nActivationHeight = 1687104;
-        consensus.vUpgrades[Consensus::UPGRADE_NU5].hashActivationBlock =
-            uint256S("0000000000d723156d9b65ffcf4984da7a19675ed7e2f06d9e5d5188af087bf8");
+        consensus.vUpgrades[Consensus::UPGRADE_NU5].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_NU6].nProtocolVersion = 170120;
-        consensus.vUpgrades[Consensus::UPGRADE_NU6].nActivationHeight = 2726400;
+        consensus.vUpgrades[Consensus::UPGRADE_NU6].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_NU6_1].nProtocolVersion = 170140;
-        consensus.vUpgrades[Consensus::UPGRADE_NU6_1].nActivationHeight = 3146400;
+        consensus.vUpgrades[Consensus::UPGRADE_NU6_1].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_ZFUTURE].nProtocolVersion = 0x7FFFFFFF;
         consensus.vUpgrades[Consensus::UPGRADE_ZFUTURE].nActivationHeight =
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
@@ -172,149 +182,12 @@ public:
         keyConstants.bech32HRPs[SAPLING_EXTENDED_FVK]         = "zxviews";
 
         keyConstants.bech32mHRPs[TEX_ADDRESS]                 = "tex";
-        {
-            auto canopyActivation = consensus.vUpgrades[Consensus::UPGRADE_CANOPY].nActivationHeight;
-            auto nu6Activation = consensus.vUpgrades[Consensus::UPGRADE_NU6].nActivationHeight;
-            auto nu6_1Activation = consensus.vUpgrades[Consensus::UPGRADE_NU6_1].nActivationHeight;
-
-            // ZIP 214 Revision 0
-            std::vector<std::string> bp_addresses = {
-                "t3LmX1cxWPPPqL4TZHx42HU3U5ghbFjRiif",
-                "t3Toxk1vJQ6UjWQ42tUJz2rV2feUWkpbTDs",
-                "t3ZBdBe4iokmsjdhMuwkxEdqMCFN16YxKe6",
-                "t3ZuaJziLM8xZ32rjDUzVjVtyYdDSz8GLWB",
-                "t3bAtYWa4bi8VrtvqySxnbr5uqcG9czQGTZ",
-                "t3dktADfb5Rmxncpe1HS5BRS5Gcj7MZWYBi",
-                "t3hgskquvKKoCtvxw86yN7q8bzwRxNgUZmc",
-                "t3R1VrLzwcxAZzkX4mX3KGbWpNsgtYtMntj",
-                "t3ff6fhemqPMVujD3AQurxRxTdvS1pPSaa2",
-                "t3cEUQFG3KYnFG6qYhPxSNgGi3HDjUPwC3J",
-                "t3WR9F5U4QvUFqqx9zFmwT6xFqduqRRXnaa",
-                "t3PYc1LWngrdUrJJbHkYPCKvJuvJjcm85Ch",
-                "t3bgkjiUeatWNkhxY3cWyLbTxKksAfk561R",
-                "t3Z5rrR8zahxUpZ8itmCKhMSfxiKjUp5Dk5",
-                "t3PU1j7YW3fJ67jUbkGhSRto8qK2qXCUiW3",
-                "t3S3yaT7EwNLaFZCamfsxxKwamQW2aRGEkh",
-                "t3eutXKJ9tEaPSxZpmowhzKhPfJvmtwTEZK",
-                "t3gbTb7brxLdVVghSPSd3ycGxzHbUpukeDm",
-                "t3UCKW2LrHFqPMQFEbZn6FpjqnhAAbfpMYR",
-                "t3NyHsrnYbqaySoQqEQRyTWkjvM2PLkU7Uu",
-                "t3QEFL6acxuZwiXtW3YvV6njDVGjJ1qeaRo",
-                "t3PdBRr2S1XTDzrV8bnZkXF3SJcrzHWe1wj",
-                "t3ZWyRPpWRo23pKxTLtWsnfEKeq9T4XPxKM",
-                "t3he6QytKCTydhpztykFsSsb9PmBT5JBZLi",
-                "t3VWxWDsLb2TURNEP6tA1ZSeQzUmPKFNxRY",
-                "t3NmWLvZkbciNAipauzsFRMxoZGqmtJksbz",
-                "t3cKr4YxVPvPBG1mCvzaoTTdBNokohsRJ8n",
-                "t3T3smGZn6BoSFXWWXa1RaoQdcyaFjMfuYK",
-                "t3gkDUe9Gm4GGpjMk86TiJZqhztBVMiUSSA",
-                "t3eretuBeBXFHe5jAqeSpUS1cpxVh51fAeb",
-                "t3dN8g9zi2UGJdixGe9txeSxeofLS9t3yFQ",
-                "t3S799pq9sYBFwccRecoTJ3SvQXRHPrHqvx",
-                "t3fhYnv1S5dXwau7GED3c1XErzt4n4vDxmf",
-                "t3cmE3vsBc5xfDJKXXZdpydCPSdZqt6AcNi",
-                "t3h5fPdjJVHaH4HwynYDM5BB3J7uQaoUwKi",
-                "t3Ma35c68BgRX8sdLDJ6WR1PCrKiWHG4Da9",
-                "t3LokMKPL1J8rkJZvVpfuH7dLu6oUWqZKQK",
-                "t3WFFGbEbhJWnASZxVLw2iTJBZfJGGX73mM",
-                "t3L8GLEsUn4QHNaRYcX3EGyXmQ8kjpT1zTa",
-                "t3PgfByBhaBSkH8uq4nYJ9ZBX4NhGCJBVYm",
-                "t3WecsqKDhWXD4JAgBVcnaCC2itzyNZhJrv",
-                "t3ZG9cSfopnsMQupKW5v9sTotjcP5P6RTbn",
-                "t3hC1Ywb5zDwUYYV8LwhvF5rZ6m49jxXSG5",
-                "t3VgMqDL15ZcyQDeqBsBW3W6rzfftrWP2yB",
-                "t3LC94Y6BwLoDtBoK2NuewaEbnko1zvR9rm",
-                "t3cWCUZJR3GtALaTcatrrpNJ3MGbMFVLRwQ",
-                "t3YYF4rPLVxDcF9hHFsXyc5Yq1TFfbojCY6",
-                "t3XHAGxRP2FNfhAjxGjxbrQPYtQQjc3RCQD",
-            };
-
-            // ZF and MG each use a single address repeated 48 times,
-            // once for each funding period.
-            std::vector<std::string> zf_addresses(48, "t3dvVE3SQEi7kqNzwrfNePxZ1d4hUyztBA1");
-            std::vector<std::string> mg_addresses(48, "t3XyYW8yBFRuMnfvm5KLGFbEVz25kckZXym");
-
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_ZIP214_BP,
-                canopyActivation,
-                nu6Activation,
-                bp_addresses);
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_ZIP214_ZF,
-                canopyActivation,
-                nu6Activation,
-                zf_addresses);
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_ZIP214_MG,
-                canopyActivation,
-                nu6Activation,
-                mg_addresses);
-
-            // ZIP 214 Revision 1
-            // FPF uses a single address repeated 12 times, once for each funding period.
-            std::vector<std::string> fpf_addresses(12, "t3cFfPt1Bcvgez9ZbMBFWeZsskxTkPzGCow");
-
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_FPF_ZCG,
-                nu6Activation,
-                nu6_1Activation,
-                fpf_addresses);
-            consensus.AddZIP207LockboxStream(
-                keyConstants,
-                Consensus::FS_DEFERRED,
-                nu6Activation,
-                nu6_1Activation);
-
-            // ZIP 214 Revision 2
-            // FPF uses a single address repeated 36 times, once for each funding period.
-            std::vector<std::string> fpf_addresses_h3(36, "t3cFfPt1Bcvgez9ZbMBFWeZsskxTkPzGCow");
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_FPF_ZCG_H3,
-                nu6_1Activation,
-                4406400,
-                fpf_addresses_h3);
-            consensus.AddZIP207LockboxStream(
-                keyConstants,
-                Consensus::FS_CCF_H3,
-                nu6_1Activation,
-                4406400);
-
-            // ZIP 271
-            // For convenience of distribution, we split the lockbox contents into 10 equal chunks.
-            std::string nu6_1_kho_address = "t3ev37Q2uL1sfTsiJQJiWJoFzQpDhmnUwYo";
-            static const CAmount nu6_1_disbursement_amount = 78750 * COIN;
-            static const CAmount nu6_1_chunk_amount = 7875 * COIN;
-            static constexpr auto nu6_1_chunks = {
-                Consensus::LD_ZIP271_NU6_1_CHUNK_1,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_2,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_3,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_4,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_5,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_6,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_7,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_8,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_9,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_10,
-            };
-            static_assert(nu6_1_chunk_amount * nu6_1_chunks.size() == nu6_1_disbursement_amount);
-            for (auto idx : nu6_1_chunks) {
-                consensus.AddZIP271LockboxDisbursement(
-                    keyConstants,
-                    idx,
-                    Consensus::UPGRADE_NU6_1,
-                    nu6_1_chunk_amount,
-                    nu6_1_kho_address);
-            }
-        }
+        // Zclassic has no developer tax: no ZIP 207 funding streams and no
+        // ZIP 271 one-time lockbox disbursements. 100% of the block subsidy
+        // goes to the miner (founders' reward enforcement is also removed).
 
         // The best chain should have at least this much work.
-        // From block 3308324, 2026-04-15.
-        consensus.nMinimumChainWork = uint256S("0x00000000000000000000000000000000000000000000000018bd77669ac52c2f");
+        consensus.nMinimumChainWork = uint256S("0x000000000000000000000000000000000000000000000000000af996bfd8e482");
 
         /**
          * The message start string should be awesome! ⓩ❤
@@ -323,25 +196,29 @@ public:
         pchMessageStart[1] = 0xe9;
         pchMessageStart[2] = 0x27;
         pchMessageStart[3] = 0x64;
-        nDefaultPort = 8233;
+        nDefaultPort = 8033;
         nPruneAfterHeight = 100000;
 
         genesis = CreateGenesisBlock(
-            1477641360,
-            uint256S("0x0000000000000000000000000000000000000000000000000000000000001257"),
-            ParseHex("000a889f00854b8665cd555f4656f68179d31ccadc1b1f7fb0952726313b16941da348284d67add4686121d4e3d930160c1348d8191c25f12b267a6a9c131b5031cbf8af1f79c9d513076a216ec87ed045fa966e01214ed83ca02dc1797270a454720d3206ac7d931a0a680c5c5e099057592570ca9bdf6058343958b31901fce1a15a4f38fd347750912e14004c73dfe588b903b6c03166582eeaf30529b14072a7b3079e3a684601b9b3024054201f7440b0ee9eb1a7120ff43f713735494aa27b1f8bab60d7f398bca14f6abb2adbf29b04099121438a7974b078a11635b594e9170f1086140b4173822dd697894483e1c6b4e8b8dcd5cb12ca4903bc61e108871d4d915a9093c18ac9b02b6716ce1013ca2c1174e319c1a570215bc9ab5f7564765f7be20524dc3fdf8aa356fd94d445e05ab165ad8bb4a0db096c097618c81098f91443c719416d39837af6de85015dca0de89462b1d8386758b2cf8a99e00953b308032ae44c35e05eb71842922eb69797f68813b59caf266cb6c213569ae3280505421a7e3a0a37fdf8e2ea354fc5422816655394a9454bac542a9298f176e211020d63dee6852c40de02267e2fc9d5e1ff2ad9309506f02a1a71a0501b16d0d36f70cdfd8de78116c0c506ee0b8ddfdeb561acadf31746b5a9dd32c21930884397fb1682164cb565cc14e089d66635a32618f7eb05fe05082b8a3fae620571660a6b89886eac53dec109d7cbb6930ca698a168f301a950be152da1be2b9e07516995e20baceebecb5579d7cdbc16d09f3a50cb3c7dffe33f26686d4ff3f8946ee6475e98cf7b3cf9062b6966e838f865ff3de5fb064a37a21da7bb8dfd2501a29e184f207caaba364f36f2329a77515dcb710e29ffbf73e2bbd773fab1f9a6b005567affff605c132e4e4dd69f36bd201005458cfbd2c658701eb2a700251cefd886b1e674ae816d3f719bac64be649c172ba27a4fd55947d95d53ba4cbc73de97b8af5ed4840b659370c556e7376457f51e5ebb66018849923db82c1c9a819f173cccdb8f3324b239609a300018d0fb094adf5bd7cbb3834c69e6d0b3798065c525b20f040e965e1a161af78ff7561cd874f5f1b75aa0bc77f720589e1b810f831eac5073e6dd46d00a2793f70f7427f0f798f2f53a67e615e65d356e66fe40609a958a05edb4c175bcc383ea0530e67ddbe479a898943c6e3074c6fcc252d6014de3a3d292b03f0d88d312fe221be7be7e3c59d07fa0f2f4029e364f1f355c5d01fa53770d0cd76d82bf7e60f6903bc1beb772e6fde4a70be51d9c7e03c8d6d8dfb361a234ba47c470fe630820bbd920715621b9fbedb49fcee165ead0875e6c2b1af16f50b5d6140cc981122fcbcf7c5a4e3772b3661b628e08380abc545957e59f634705b1bbde2f0b4e055a5ec5676d859be77e20962b645e051a880fddb0180b4555789e1f9344a436a84dc5579e2553f1e5fb0a599c137be36cabbed0319831fea3fddf94ddc7971e4bcf02cdc93294a9aab3e3b13e3b058235b4f4ec06ba4ceaa49d675b4ba80716f3bc6976b1fbf9c8bf1f3e3a4dc1cd83ef9cf816667fb94f1e923ff63fef072e6a19321e4812f96cb0ffa864da50ad74deb76917a336f31dce03ed5f0303aad5e6a83634f9fcc371096f8288b8f02ddded5ff1bb9d49331e4a84dbe1543164438fde9ad71dab024779dcdde0b6602b5ae0a6265c14b94edd83b37403f4b78fcd2ed555b596402c28ee81d87a909c4e8722b30c71ecdd861b05f61f8b1231795c76adba2fdefa451b283a5d527955b9f3de1b9828e7b2e74123dd47062ddcc09b05e7fa13cb2212a6fdbc65d7e852cec463ec6fd929f5b8483cf3052113b13dac91b69f49d1b7d1aec01c4a68e41ce157"),
+            1478403829,
+            uint256S("0x000000000000000000000000000000000000000000000000000000000000021d"),
+            ParseHex("009aaa951ca873376788d3002918d956e371bdf03c1afcfd8eea17867b5480d2e59a2a4dd52ed0d091af0c0909aa66ce2da97266926a9ea69b9ccca389bc120d9c4dbbae727ab9d6dfd1cd847df0ef0cc9bc989f11bdd6522429c15957daa3c5a2612522ded69857c148c0638611a19287599b47683c714b5774d0fcb1341cf4fc3a546a2441a19f02a55c6f9775749e57783b2abd5b25d41753d2f60892bbb4c3173d7787dbf5e50267324db218a14dd65f71bb02cf2566d3201800f866701db8c221424b75c639de58e7e40705157ae7d10da708ec2b9e71b9bc1ad34854a7bdf58d93766b6e291d3b545fa1f785a1a9829eccd525d16856f4317f0449d5c3516736f1e564f17690f13d3c939ad5516f1db70194902c20afd939168037fa404ec962dfbe752f79ac87a2cc3fd07bcd94d1975b1849cc739c0bc144ae4e75eda1bbed5b5ef8f65966257ec7b1fc6bb600e12e1c65c8c13a505f35dd363e07b6238211a0e502e36db5a620310b544360dd9b4a6cedabc34eeb530139daad50d4a5b6eaf4d50be4ba10e970ce984fb705376a3b0b4bf3f3778600f14e739e04406106f707085ab87ca70598c032b6717a54a9fd8ef72fdd78fb41fa9d45ad685caf77e0fc42e8e644634c24bc972f3ab0e3f0345854eda624045feb6bc9d20b5b1fc6903ebc64026e51da598c0d8711c452131a8fd2bbe01403af20e5db88afcd53b6107f001dae78b548d6a1581baca15359de83e54e75d8fc6374ca1edec17a9f4b06931162f9952575c5c3fb5dfc70a0f793049e781926daaafd4f4d330cf7d5635af1541f0d29e709a37c088d6d2e7aa09d15dfb9c2ae6c1ce661e85e9d89772eb47cfea00c621b66faf8a48cfa970b898dbd77b14e7bf44b742c00f76d2435f949f027132adb1e974551488f988e9fe379a0f86538ee59e26637a3d50bf400c7f52aa9457d77c3eb426628bb17909b26a6820d0772d4c6f74472f635e4c6e72272ce01fc475df69e10371457c55e0fbdf3a392850b9924da9c9a55792325c4318562593f0df8d39559065be03a22b1b6c21206aa1958a0d33257d89b74dea42a11aabf8eddbfe6136ab649744b704eb3e3d473654b588927dd9f486c1cd02639cf656ccbf2c4869c2ed1f2ba4ec55e69a42d5af6b3605a0cdf987734727c6fc1c1489870fb300139328c4d12eb6f5e8309cc09f5f3c29ab0957374113931ec9a56e7579446f12faacda9bd50899a17bd0f78e89ed70a723fdadfb1f4bc3317c8caa32757901604fb79ae48e22251c3b1691125ec5a99fabdf62b015bc817e1c30c06565a7071510b014058a77856a150bf86ab0c565b8bbbed159e2fb862c6215752bf3f0563e2bbbf23b0dbfb2de21b366b7e4cda212d69502643ca1f13ce362eef7435d60530b9999027dd39cd01fd8e064f1ccf6b748a2739707c9f76a041f82d3e046a9c184d83396f1f15b5a11eddb2baff40fc7b410f0c43e36ac7d8ff0204219abe4610825191fbb2be15a508c839259bfd6a4c5204c779fad6c23bbd37f90709654a5b93c6f93b4c844be12cd6cd2200afbf600b2ae9b6c133d8cdb3a85312a6d9948213c656db4d076d2bacd10577d7624be0c684bd1e5464bb39006a524d971cd2223ae9e23dea12366355b3cc4c9f6b8104df6abd23029ac4179f718e3a51eba69e4ebeec511312c423e0755b53f72ac18ef1fb445d7ab83b0894435a4b1a9cd1b473792e0628fd40bef624b4fb6ba457494cd1137a4da9e44956143068af9db98135e6890ef589726f4f5fbd45a713a24736acf150b5fb7a4c3448465322dccd7f3458c49cf2d0ef6dd7dd2ed1f1147f4a00af28ae39a73c827a38309f59faf8970448436fbb14766a3247aac4d5c610db9a662b8cb5b3e2"),
             0x1f07ffff, 4, 0);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08"));
-        assert(genesis.hashMerkleRoot == uint256S("0xc4eaa58879081de3c24a7b117ed2b28300e7ec4c4c1dff1d3f1268b7857a4ddb"));
+        assert(consensus.hashGenesisBlock == uint256S("0x0007104ccda289427919efc39dc9e4d499804b7bebc22df55f8b834301260602"));
+        assert(genesis.hashMerkleRoot == uint256S("0x19612bcf00ea7611d315d7f43554fa983c6e8c30cba17e52c679e0e80abf7d42"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
-        vSeeds.push_back(CDNSSeedData("z.cash", "dnsseed.z.cash")); // Zcash
-        vSeeds.push_back(CDNSSeedData("str4d.xyz", "dnsseed.str4d.xyz")); // @str4d
-        vSeeds.push_back(CDNSSeedData("zfnd.org", "mainnet.seeder.zfnd.org")); // Zcash Foundation
-        vSeeds.push_back(CDNSSeedData("yolo.money", "mainnet.is.yolo.money")); // gtank
+        vSeeds.push_back(CDNSSeedData("zclnet.net", "dnsseed.zclnet.net"));
+        vSeeds.push_back(CDNSSeedData("zslp.org", "dnsseed.zslp.org"));
+        // CDNSSeedData accepts a literal IP (LookupHost resolves it as-is), so
+        // these known-good bootstrap servers always yield at least a few live peers.
+        vSeeds.push_back(CDNSSeedData("seed1.zclassic", "74.50.74.102"));
+        vSeeds.push_back(CDNSSeedData("seed2.zclassic", "205.209.104.118"));
 
+        // pnSeed6_main is empty in this fork's chainparamsseeds.h, so this loads an
+        // empty fixed-seed set; peers are discovered via the DNS seeds above.
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
 
         fMiningRequiresPeers = true;
@@ -352,63 +229,28 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            (      0, consensus.hashGenesisBlock)
-            (   2500, uint256S("0x00000006dc968f600be11a86cbfbf7feb61c7577f45caced2e82b6d261d19744"))
-            (  15000, uint256S("0x00000000b6bc56656812a5b8dcad69d6ad4446dec23b5ec456c18641fb5381ba"))
-            (  67500, uint256S("0x000000006b366d2c1649a6ebb4787ac2b39c422f451880bc922e3a6fbd723616"))
-            ( 100000, uint256S("0x000000001c5c82cd6baccfc0879e3830fd50d5ede17fa2c37a9a253c610eb285"))
-            ( 133337, uint256S("0x0000000002776ccfaf06cc19857accf3e20c01965282f916b8a886e3e4a05be9"))
-            ( 180000, uint256S("0x000000001205b742eac4a1b3959635bdf8aeada078d6a996df89740f7b54351d"))
-            ( 222222, uint256S("0x000000000cafb9e56445a6cabc8057b57ee6fcc709e7adbfa195e5c7fac61343"))
-            ( 270000, uint256S("0x00000000025c1cfa0258e33ab050aaa9338a3d4aaa3eb41defefc887779a9729"))
-            ( 304600, uint256S("0x00000000028324e022a45014c4a4dc51e95d41e6bceb6ad554c5b65d5cea3ea5"))
-            ( 410100, uint256S("0x0000000002c565958f783a24a4ac17cde898ff525e75ed9baf66861b0b9fcada"))
-            ( 497000, uint256S("0x0000000000abd333f0acca6ffdf78a167699686d6a7d25c33fca5f295061ffff"))
-            ( 525000, uint256S("0x0000000001a36c500378be8862d9bf1bea8f1616da6e155971b608139cc7e39b"))
-            ( 650000, uint256S("0x0000000000a0a3fbbd739fb4fcbbfefff44efffc2064ca69a59d5284a2da26e2"))
-            ( 800000, uint256S("0x00000000013f1f4e5634e896ebdbe63dec115547c1480de0d83c64426f913c27"))
-            (1000000, uint256S("0x000000000062eff9ae053020017bfef24e521a2704c5ec9ead2a4608ac70fc7a"))
-            (1200000, uint256S("0x0000000000347d5011108fdcf667c93e622e8635c94e586556898e41db18d192"))
-            (1400000, uint256S("0x0000000001155ecec0ad3924d47ad476c0a5ed7527b8776f53cbda1a780b9f76"))
-            (1600000, uint256S("0x0000000000aae69fb228f90e77f34c24b7920667eaca726c3a3939536f03dcfc"))
-            (1860000, uint256S("0x000000000043a968c78af5fb8133e00e6fe340051c19dd969e53ab62bf3dc22a"))
-            (2000000, uint256S("0x00000000010accaf2f87934765dc2e0bf4823a2b1ae2c1395b334acfce52ad68"))
-            (2200000, uint256S("0x0000000001a0139c4c4d0e8f68cc562227c6003f4b1b640a3d921aeb8c3d2e3d"))
-            (2400000, uint256S("0x0000000000294d1c8d87a1b6566d302aa983691bc3cab0583a245389bbb9d285"))
-            (2600000, uint256S("0x0000000000b5ad92fcec0069d590f674d05ec7d96b1ff727863ea390950c4e49"))
-            (2800000, uint256S("0x00000000011a226fb25d778d65b055605a82da016989b7788e0ce83c4f8d64f7"))
-            (3000000, uint256S("0x0000000000573729e4db33678233e5dc0cc721c9c09977c64dcaa3f6344de8e9")),
-            1752983473,     // * UNIX timestamp of last checkpoint block
-            15537904,       // * total number of transactions between genesis and last checkpoint
-            5967            // * estimated number of transactions per day after checkpoint
-                            //   (total number of tx * 48 * 24) / checkpoint block height
+            (       0, consensus.hashGenesisBlock)
+            (   30000, uint256S("0x000000005c2ad200c3c7c8e627f67b306659efca1268c9bb014335fdadc0c392"))
+            (  160000, uint256S("0x000000065093005a1a46ee95d6d66c2b07008220ca64dd3b3a93bbd1945480c0"))
+            (  468200, uint256S("0x000000009bd5548c851c2b237894d6807a53bf1e2808402545e27a995ae4f3c3"))
+            ( 2013514, uint256S("0x000019679aa2ea97a3f18bd9265bc91a09929ea0b1acc0fc5ef77cdf3cf906e7"))
+            ( 2879438, uint256S("0x000007e8fccb9e4831c7d7376a283b016ead6166491f951f4f083dbe366992b2"))
+            ( 3126937, uint256S("0x00000663e40f1fe0bc32a7e7282fac25de5fe8ecefd9c627e2fd948d388f7053")),
+            1780195595,     // * UNIX timestamp of the verificationprogress reference block
+                            //   (mainnet height 3130800, 2026-05-31)
+            5121107,        // * cumulative transactions (nChainTx) at that block
+            1138            // * recent transactions/day (~1.0 tx/block, ~1138 blocks/day)
         };
 
-        // Hardcoded fallback value for the Sprout shielded value pool balance
-        // for nodes that have not reindexed since the introduction of monitoring
-        // in #2795.
-        nSproutValuePoolCheckpointHeight = 520633;
-        nSproutValuePoolCheckpointBalance = 22145062442933;
-        fZIP209Enabled = true;
-        hashSproutValuePoolCheckpointBlock = uint256S("0000000000c7b46b6bc04b4cbf87d8bb08722aebd51232619b214f7273f8460e");
-
-        // Chain supply checkpoint at NU6.1 activation (height 3146400).
-        // This allows nodes with legacy block index data (written by zcashd
-        // versions older than 5.4.0, which did not serialize nChainSupplyDelta)
-        // to bootstrap nChainTotalSupply and nChainTransparentValue without
-        // requiring a reindex. The other pool balances are included so that
-        // we do not need to trust that the computed values from before the
-        // checkpoint are correct.
-        nChainSupplyCheckpointHeight = 3146400;
-        nChainSupplyCheckpointTotalSupply = 1640588297804480;
-        nChainSupplyCheckpointTransparentValue = 1158133657237751;
-        nChainSupplyCheckpointSproutValue = 2562695744028;
-        nChainSupplyCheckpointSaplingValue = 64691367655556;
-        nChainSupplyCheckpointOrchardValue = 415200558417145;
-        nChainSupplyCheckpointLockboxValue = 18750000;
-        hashChainSupplyCheckpointBlock = uint256S("0000000000b98a7d8f390793fa113bf6755935f0c14ea817af07d2c16f2c3ef4");
+        // The Sprout value-pool and chain-supply checkpoints from upstream Zcash
+        // reference Zcash mainnet heights/balances and do not apply to Zclassic.
+        // ZIP 209 turnstile enforcement is left disabled on Zclassic mainnet, and
+        // the chain-supply checkpoint is left null so it is skipped.
+        fZIP209Enabled = false;
 
         // Founders reward script expects a vector of 2-of-3 multisig addresses
+        // (retained as vestigial data only; Zclassic never enforced or paid a
+        // founders' reward — see Phase 2 of doc/zclassicd-port-plan.md).
         vFoundersRewardAddress = {
             "t3Vz22vK5z2LcKEdg16Yv4FFneEL1zg9ojd", /* main-index: 0*/
             "t3cL9AucCajm3HXDhb5jBnJK2vapVoXsop3", /* main-index: 1*/
@@ -472,10 +314,10 @@ class CTestNetParams : public CChainParams {
 public:
     CTestNetParams() {
         keyConstants.strNetworkID = "test";
-        strCurrencyUnits = "TAZ";
+        strCurrencyUnits = "ZCT";
         keyConstants.bip44CoinType = 1;
         consensus.fCoinbaseMustBeShielded = true;
-        consensus.nSubsidySlowStartInterval = 20000;
+        consensus.nSubsidySlowStartInterval = 2;
         consensus.nPreBlossomSubsidyHalvingInterval = Consensus::PRE_BLOSSOM_HALVING_INTERVAL;
         consensus.nPostBlossomSubsidyHalvingInterval = POST_BLOSSOM_HALVING_INTERVAL(Consensus::PRE_BLOSSOM_HALVING_INTERVAL);
         consensus.nMajorityEnforceBlockUpgrade = 51;
@@ -494,40 +336,45 @@ public:
         consensus.nPostBlossomPowTargetSpacing = Consensus::POST_BLOSSOM_POW_TARGET_SPACING;
         consensus.nPowAllowMinDifficultyBlocksAfterHeight = 299187;
         consensus.fPowNoRetargeting = false;
+        consensus.scaleDifficultyAtUpgradeFork = false;
         consensus.vUpgrades[Consensus::BASE_SPROUT].nProtocolVersion = 170002;
         consensus.vUpgrades[Consensus::BASE_SPROUT].nActivationHeight =
             Consensus::NetworkUpgrade::ALWAYS_ACTIVE;
         consensus.vUpgrades[Consensus::UPGRADE_TESTDUMMY].nProtocolVersion = 170002;
         consensus.vUpgrades[Consensus::UPGRADE_TESTDUMMY].nActivationHeight =
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        // Zclassic testnet activated Overwinter and Sapling at height 20.
         consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nProtocolVersion = 170003;
-        consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nActivationHeight = 207500;
-        consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].hashActivationBlock =
-            uint256S("0000257c4331b098045023fcfbfa2474681f4564ab483f84e4e1ad078e4acf44");
+        consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nActivationHeight = 20;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nProtocolVersion = 170007;
-        consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight = 280000;
-        consensus.vUpgrades[Consensus::UPGRADE_SAPLING].hashActivationBlock =
-            uint256S("000420e7fcc3a49d729479fb0b560dd7b8617b178a08e9e389620a9d1dd6361a");
+        consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight = 20;
+        // Zclassic testnet post-Sapling upgrades. DiffAdj was never activated on
+        // Zclassic testnet.
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nProtocolVersion = 170008;
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nActivationHeight = 6350;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nProtocolVersion = 170009;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nProtocolVersion = 170010;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nActivationHeight = 78856;
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nProtocolVersion = 170008;
-        consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight = 584000;
-        consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].hashActivationBlock =
-            uint256S("00367515ef2e781b8c9358b443b6329572599edd02c59e8af67db9785122f298");
+        consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_HEARTWOOD].nProtocolVersion = 170010;
-        consensus.vUpgrades[Consensus::UPGRADE_HEARTWOOD].nActivationHeight = 903800;
-        consensus.vUpgrades[Consensus::UPGRADE_HEARTWOOD].hashActivationBlock =
-            uint256S("05688d8a0e9ff7c04f6f05e6d695dc5ab43b9c4803342d77ae360b2b27d2468e");
+        consensus.vUpgrades[Consensus::UPGRADE_HEARTWOOD].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_CANOPY].nProtocolVersion = 170012;
-        consensus.vUpgrades[Consensus::UPGRADE_CANOPY].nActivationHeight = 1028500;
-        consensus.vUpgrades[Consensus::UPGRADE_CANOPY].hashActivationBlock =
-            uint256S("01a4d7c6aada30c87762c1bf33fff5df7266b1fd7616bfdb5227fa59bd79e7a2");
+        consensus.vUpgrades[Consensus::UPGRADE_CANOPY].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_NU5].nProtocolVersion = 170050;
-        consensus.vUpgrades[Consensus::UPGRADE_NU5].nActivationHeight = 1842420;
-        consensus.vUpgrades[Consensus::UPGRADE_NU5].hashActivationBlock =
-            uint256S("0006d75c60b3093d1b671ff7da11c99ea535df9927c02e6ed9eb898605eb7381");
+        consensus.vUpgrades[Consensus::UPGRADE_NU5].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_NU6].nProtocolVersion = 170110;
-        consensus.vUpgrades[Consensus::UPGRADE_NU6].nActivationHeight = 2976000;
+        consensus.vUpgrades[Consensus::UPGRADE_NU6].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_NU6_1].nProtocolVersion = 170130;
-        consensus.vUpgrades[Consensus::UPGRADE_NU6_1].nActivationHeight = 3536500;
+        consensus.vUpgrades[Consensus::UPGRADE_NU6_1].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_ZFUTURE].nProtocolVersion = 0x7FFFFFFF;
         consensus.vUpgrades[Consensus::UPGRADE_ZFUTURE].nActivationHeight =
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
@@ -559,149 +406,9 @@ public:
         keyConstants.bech32mHRPs[TEX_ADDRESS]                 = "textest";
 
         // Testnet funding streams
-        {
-            auto canopyActivation = consensus.vUpgrades[Consensus::UPGRADE_CANOPY].nActivationHeight;
-            auto nu6Activation = consensus.vUpgrades[Consensus::UPGRADE_NU6].nActivationHeight;
-            auto nu6_1Activation = consensus.vUpgrades[Consensus::UPGRADE_NU6_1].nActivationHeight;
-
-            // ZIP 214 Revision 0
-            std::vector<std::string> bp_addresses = {
-                "t26ovBdKAJLtrvBsE2QGF4nqBkEuptuPFZz",
-                "t26ovBdKAJLtrvBsE2QGF4nqBkEuptuPFZz",
-                "t26ovBdKAJLtrvBsE2QGF4nqBkEuptuPFZz",
-                "t26ovBdKAJLtrvBsE2QGF4nqBkEuptuPFZz",
-                "t2NNHrgPpE388atmWSF4DxAb3xAoW5Yp45M",
-                "t2VMN28itPyMeMHBEd9Z1hm6YLkQcGA1Wwe",
-                "t2CHa1TtdfUV8UYhNm7oxbzRyfr8616BYh2",
-                "t2F77xtr28U96Z2bC53ZEdTnQSUAyDuoa67",
-                "t2ARrzhbgcpoVBDPivUuj6PzXzDkTBPqfcT",
-                "t278aQ8XbvFR15mecRguiJDQQVRNnkU8kJw",
-                "t2Dp1BGnZsrTXZoEWLyjHmg3EPvmwBnPDGB",
-                "t2KzeqXgf4ju33hiSqCuKDb8iHjPCjMq9iL",
-                "t2Nyxqv1BiWY1eUSiuxVw36oveawYuo18tr",
-                "t2DKFk5JRsVoiuinK8Ti6eM4Yp7v8BbfTyH",
-                "t2CUaBca4k1x36SC4q8Nc8eBoqkMpF3CaLg",
-                "t296SiKL7L5wvFmEdMxVLz1oYgd6fTfcbZj",
-                "t29fBCFbhgsjL3XYEZ1yk1TUh7eTusB6dPg",
-                "t2FGofLJXa419A76Gpf5ncxQB4gQXiQMXjK",
-                "t2ExfrnRVnRiXDvxerQ8nZbcUQvNvAJA6Qu",
-                "t28JUffLp47eKPRHKvwSPzX27i9ow8LSXHx",
-                "t2JXWPtrtyL861rFWMZVtm3yfgxAf4H7uPA",
-                "t2QdgbJoWfYHgyvEDEZBjHmgkr9yNJff3Hi",
-                "t2QW43nkco8r32ZGRN6iw6eSzyDjkMwCV3n",
-                "t2DgYDXMJTYLwNcxighQ9RCgPxMVATRcUdC",
-                "t2Bop7dg33HGZx3wunnQzi2R2ntfpjuti3M",
-                "t2HVeEwovcLq9RstAbYkqngXNEsCe2vjJh9",
-                "t2HxbP5keQSx7p592zWQ5bJ5GrMmGDsV2Xa",
-                "t2TJzUg2matao3mztBRJoWnJY6ekUau6tPD",
-                "t29pMzxmo6wod25YhswcjKv3AFRNiBZHuhj",
-                "t2QBQMRiJKYjshJpE6RhbF7GLo51yE6d4wZ",
-                "t2F5RqnqguzZeiLtYHFx4yYfy6pDnut7tw5",
-                "t2CHvyZANE7XCtg8AhZnrcHCC7Ys1jJhK13",
-                "t2BRzpMdrGWZJ2upsaNQv6fSbkbTy7EitLo",
-                "t2BFixHGQMAWDY67LyTN514xRAB94iEjXp3",
-                "t2Uvz1iVPzBEWfQBH1p7NZJsFhD74tKaG8V",
-                "t2CmFDj5q6rJSRZeHf1SdrowinyMNcj438n",
-                "t2ErNvWEReTfPDBaNizjMPVssz66aVZh1hZ",
-                "t2GeJQ8wBUiHKDVzVM5ZtKfY5reCg7CnASs",
-                "t2L2eFtkKv1G6j55kLytKXTGuir4raAy3yr",
-                "t2EK2b87dpPazb7VvmEGc8iR6SJ289RywGL",
-                "t2DJ7RKeZJxdA4nZn8hRGXE8NUyTzjujph9",
-                "t2K1pXo4eByuWpKLkssyMLe8QKUbxnfFC3H",
-                "t2TB4mbSpuAcCWkH94Leb27FnRxo16AEHDg",
-                "t2Phx4gVL4YRnNsH3jM1M7jE4Fo329E66Na",
-                "t2VQZGmeNomN8c3USefeLL9nmU6M8x8CVzC",
-                "t2RicCvTVTY5y9JkreSRv3Xs8q2K67YxHLi",
-                "t2JrSLxTGc8wtPDe9hwbaeUjCrCfc4iZnDD",
-                "t2Uh9Au1PDDSw117sAbGivKREkmMxVC5tZo",
-                "t2FDwoJKLeEBMTy3oP7RLQ1Fihhvz49a3Bv",
-                "t2FY18mrgtb7QLeHA8ShnxLXuW8cNQ2n1v8",
-                "t2L15TkDYum7dnQRBqfvWdRe8Yw3jVy9z7g",
-            };
-
-            // ZF and MG use the same address for each funding period
-            std::vector<std::string> zf_addresses(51, "t27eWDgjFYJGVXmzrXeVjnb5J3uXDM9xH9v");
-            std::vector<std::string> mg_addresses(51, "t2Gvxv2uNM7hbbACjNox4H6DjByoKZ2Fa3P");
-
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_ZIP214_BP,
-                canopyActivation,
-                2796000, // *not* the NU6 activation height
-                bp_addresses);
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_ZIP214_ZF,
-                canopyActivation,
-                2796000, // *not* the NU6 activation height
-                zf_addresses);
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_ZIP214_MG,
-                canopyActivation,
-                2796000, // *not* the NU6 activation height
-                mg_addresses);
-
-            // ZIP 214 Revision 1
-            // FPF uses a single address repeated 13 times, once for each funding period.
-            // There are 13 periods because the start height does not align with a period boundary.
-            std::vector<std::string> fpf_addresses(13, "t2HifwjUj9uyxr9bknR8LFuQbc98c3vkXtu");
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_FPF_ZCG,
-                nu6Activation,
-                3396000,
-                fpf_addresses);
-            consensus.AddZIP207LockboxStream(
-                keyConstants,
-                Consensus::FS_DEFERRED,
-                nu6Activation,
-                3396000);
-
-            // ZIP 214 Revision 2
-            // FPF uses a single address repeated 27 times, once for each funding period.
-            // There are 27 periods because the start height is after the second halving
-            // on testnet and does not align with a period boundary.
-            std::vector<std::string> fpf_addresses_h3(27, "t2HifwjUj9uyxr9bknR8LFuQbc98c3vkXtu");
-            consensus.AddZIP207FundingStream(
-                keyConstants,
-                Consensus::FS_FPF_ZCG_H3,
-                nu6_1Activation,
-                4476000,
-                fpf_addresses_h3);
-            consensus.AddZIP207LockboxStream(
-                keyConstants,
-                Consensus::FS_CCF_H3,
-                nu6_1Activation,
-                4476000);
-
-            // ZIP 271
-            // For testing purposes, we split the lockbox contents into 10 equal chunks.
-            std::string nu6_1_kho_address = "t2RnBRiqrN1nW4ecZs1Fj3WWjNdnSs4kiX8";
-            static const CAmount nu6_1_disbursement_amount = 78750 * COIN;
-            static const CAmount nu6_1_chunk_amount = 7875 * COIN;
-            static constexpr auto nu6_1_chunks = {
-                Consensus::LD_ZIP271_NU6_1_CHUNK_1,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_2,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_3,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_4,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_5,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_6,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_7,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_8,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_9,
-                Consensus::LD_ZIP271_NU6_1_CHUNK_10,
-            };
-            static_assert(nu6_1_chunk_amount * nu6_1_chunks.size() == nu6_1_disbursement_amount);
-            for (auto idx : nu6_1_chunks) {
-                consensus.AddZIP271LockboxDisbursement(
-                    keyConstants,
-                    idx,
-                    Consensus::UPGRADE_NU6_1,
-                    nu6_1_chunk_amount,
-                    nu6_1_kho_address);
-            }
-        }
+        // Zclassic has no developer tax: no ZIP 207 funding streams and no
+        // ZIP 271 one-time lockbox disbursements. 100% of the block subsidy
+        // goes to the miner (founders' reward enforcement is also removed).
 
         // On testnet we activate this rule 6 blocks after Blossom activation. From block 299188 and
         // prior to Blossom activation, the testnet minimum-difficulty threshold was 15 minutes (i.e.
@@ -718,33 +425,39 @@ public:
 
         static_assert(6 * Consensus::POST_BLOSSOM_POW_TARGET_SPACING * 7 < MAX_FUTURE_BLOCK_TIME_MTP - 60,
                       "MAX_FUTURE_BLOCK_TIME_MTP is too low given block target spacing");
-        consensus.nFutureTimestampSoftForkHeight = consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight + 6;
+        // The MTP-relative future-timestamp soft fork (Zcash v2.1.1-1) is a
+        // Zcash-only rule that Zclassic never enforced; the historical Zclassic
+        // chain contains blocks whose timestamps exceed MTP + MAX_FUTURE_BLOCK_TIME_MTP.
+        // It is left disabled (see consensus/params.h); only the classic 2-hour
+        // adjusted-time rule and the MTP lower bound apply.
+        consensus.nFutureTimestampSoftForkHeight = std::numeric_limits<int>::max();
 
         // The best chain should have at least this much work.
-        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000000263c0984a2");
+        consensus.nMinimumChainWork = uint256S("0x0000000000000000000000000000000000000000000000000000000000000000");
 
         pchMessageStart[0] = 0xfa;
         pchMessageStart[1] = 0x1a;
         pchMessageStart[2] = 0xf9;
         pchMessageStart[3] = 0xbf;
-        nDefaultPort = 18233;
+        nDefaultPort = 18033;
         nPruneAfterHeight = 1000;
 
         genesis = CreateGenesisBlock(
-            1477648033,
-            uint256S("0x0000000000000000000000000000000000000000000000000000000000000006"),
-            ParseHex("00a6a51259c3f6732481e2d035197218b7a69504461d04335503cd69759b2d02bd2b53a9653f42cb33c608511c953673fa9da76170958115fe92157ad3bb5720d927f18e09459bf5c6072973e143e20f9bdf0584058c96b7c2234c7565f100d5eea083ba5d3dbaff9f0681799a113e7beff4a611d2b49590563109962baa149b628aae869af791f2f70bb041bd7ebfa658570917f6654a142b05e7ec0289a4f46470be7be5f693b90173eaaa6e84907170f32602204f1f4e1c04b1830116ffd0c54f0b1caa9a5698357bd8aa1f5ac8fc93b405265d824ba0e49f69dab5446653927298e6b7bdc61ee86ff31c07bde86331b4e500d42e4e50417e285502684b7966184505b885b42819a88469d1e9cf55072d7f3510f85580db689302eab377e4e11b14a91fdd0df7627efc048934f0aff8e7eb77eb17b3a95de13678004f2512293891d8baf8dde0ef69be520a58bbd6038ce899c9594cf3e30b8c3d9c7ecc832d4c19a6212747b50724e6f70f6451f78fd27b58ce43ca33b1641304a916186cfbe7dbca224f55d08530ba851e4df22baf7ab7078e9cbea46c0798b35a750f54103b0cdd08c81a6505c4932f6bfbd492a9fced31d54e98b6370d4c96600552fcf5b37780ed18c8787d03200963600db297a8f05dfa551321d17b9917edadcda51e274830749d133ad226f8bb6b94f13b4f77e67b35b71f52112ce9ba5da706ad9573584a2570a4ff25d29ab9761a06bdcf2c33638bf9baf2054825037881c14adf3816ba0cbd0fca689aad3ce16f2fe362c98f48134a9221765d939f0b49677d1c2447e56b46859f1810e2cf23e82a53e0d44f34dae932581b3b7f49eaec59af872cf9de757a964f7b33d143a36c270189508fcafe19398e4d2966948164d40556b05b7ff532f66f5d1edc41334ef742f78221dfe0c7ae2275bb3f24c89ae35f00afeea4e6ed187b866b209dc6e83b660593fce7c40e143beb07ac86c56f39e895385924667efe3a3f031938753c7764a2dbeb0a643fd359c46e614873fd0424e435fa7fac083b9a41a9d6bf7e284eee537ea7c50dd239f359941a43dc982745184bf3ee31a8dc850316aa9c6b66d6985acee814373be3458550659e1a06287c3b3b76a185c5cb93e38c1eebcf34ff072894b6430aed8d34122dafd925c46a515cca79b0269c92b301890ca6b0dc8b679cdac0f23318c105de73d7a46d16d2dad988d49c22e9963c117960bdc70ef0db6b091cf09445a516176b7f6d58ec29539166cc8a38bbff387acefffab2ea5faad0e8bb70625716ef0edf61940733c25993ea3de9f0be23d36e7cb8da10505f9dc426cd0e6e5b173ab4fff8c37e1f1fb56d1ea372013d075e0934c6919393cfc21395eea20718fad03542a4162a9ded66c814ad8320b2d7c2da3ecaf206da34c502db2096d1c46699a91dd1c432f019ad434e2c1ce507f91104f66f491fed37b225b8e0b2888c37276cfa0468fc13b8d593fd9a2675f0f5b20b8a15f8fa7558176a530d6865738ddb25d3426dab905221681cf9da0e0200eea5b2eba3ad3a5237d2a391f9074bf1779a2005cee43eec2b058511532635e0fea61664f531ac2b356f40db5c5d275a4cf5c82d468976455af4e3362cc8f71aa95e71d394aff3ead6f7101279f95bcd8a0fedce1d21cb3c9f6dd3b182fce0db5d6712981b651f29178a24119968b14783cafa713bc5f2a65205a42e4ce9dc7ba462bdb1f3e4553afc15f5f39998fdb53e7e231e3e520a46943734a007c2daa1eda9f495791657eefcac5c32833936e568d06187857ed04d7b97167ae207c5c5ae54e528c36016a984235e9c5b2f0718d7b3aa93c7822ccc772580b6599671b3c02ece8a21399abd33cfd3028790133167d0a97e7de53dc8ff"),
+            1479443947,
+            uint256S("0x0000000000000000000000000000000000000000000000000000000000000013"),
+            ParseHex("002b24e10a5d2ab32b053a20ca6ebed779be1d935b1500eeea5c87aec684c6f934196fdfca6539de0cf1141544bffc5c0d1d4bab815fb5d8c2b195ccdf0755599ee492b9d98e3b79a178949f45485ad80dba38ec0461102adaa369b757ebb2bf8d75b5f67a341d666406d862a102c69800f20a7075be360a7eb2d315d78e4ce32c741f3baf7bf3e1e651976f734f367b1f126f62503b34d06d6e99b3659b2a47f5cfcf71c87e24e5023151d4af87454e7638a19b846350dd5fbc53e4ce1cce2597992b36cbcae0c24717e412c8df9ddca3e90c7629bd8c157c66d8906486943cf78e24d55dd4152f45eff49acf9fb9fddef81f2ee55892b38db940c404eaacf819588b83f0f761f1ba5b31a0ea1f8f4c5210638bbb59a2d8ddff9535f546b42a7eac5f3ee87616a075bddc3118b7f2c041f4b1e8dbcd11eea95835403066b5bb50cd23122dcb12166d75aafcfc1ca8f30580b4d48a5aa305657a06b4b650ed4633f2fa496235082feff65f70e19871f41b70632b53e57ddf38c207d631e5a56fa50bb71150f99427f73d82a439a5f70dfc7d8bbfc39d330ca7924527a5deb8950b9fa7020cfde5e07b84546e96764519ef6dd3fdc3a974abd342bdc7e4ee76bc11d5519541015afba1a0517fd347196aa326b0905a5916b83515c16f8f13105479c29f1eff3bc024ddbb07dcc672247cedc0d4ba32332ead0f13c58f50170642e16e076c34f5e75e3e8f5ac7f5238d67564fd385efecf972b0abf939a99bc7ef8f3a21cac21d2168706bbad3f4af66bb01cf61cfbc352a23797b62dcb5480bf2b7b277af233f5ce42a144d47119a89e1d114fa0bec2f13475b6b1df907bc3a429f1771afa3857bf16bfca3f76a5df14da62dc157fff4225bda73c3cfefa989edc24673bf932a024593da4c38b1a4628dd77ad919f4f7b7fb76976e696db69c89016ab30d9aa2d509f78d913d00ca9ac881aa759fc019b8c5e3eac6fddb4e0f044595e10d4997e29c79800f77cf1d97583d534db0f2726cba3739e7371eeffa2aca12b0d290ac45f44973f32f7675a5b49c94c4b608da2926555d16b7eb3670e12345a63f88797e5a5e21252c2c9463d7896001031a81bac0354336b35c5a10c93d9ae3054f6f6e4492f7c1f09a9d75034d5d0b220a9bb231e583659d5b6923a4e879326194de5c9805a02cb648508a8f9b6cd26dc17d322a478c1c599e1ec3adf2da6ce7a7e3a073b55cf30cf6b124f7700409abe14af8c60ab178579623916f165dbfd26f37056bf33c34f3af30939e1277376e4c5cba339f36381a05ef6481db033fb4c07a19e8655f8b12f9ab3c602e127b4ab1ee48e1c6a91382b54ed36ef9bb21b3bfa80a9107864dcb594dcad250e402b312607e648639631a3d1aeb17cfe3370202720ca8a46db15af92e8b46062b5bd035b24c35a592e5620d632faf1bf19a86df179fe52dd4cdbecd3cb7a336ca7489e4d1dc9433f1163c89d88c5eac36fc562496dc7583fe67c559c9a71cf89e9a0a59d5a14764926852d44a88d2ddb361d612ec06f9de874473eaf1d36b3a41911ac072b7826e6acea3d8425dc271833dba2ec17d1a270e49becbf21330ba2f0edc4b05f4df01623f3c82246ae23ea2c022434ef09611aa19ba35c3ecbad965af3ad9bc6c9b0d3b059c239ffbf9272d0150c151b4510d659cbd0e4a9c32945c612681b70ee4dcbeefeacde630b127115fd9af16cef4afefe611c9dfcc63e6833bf4dab79a7e1ae3f70321429557ab9da48bf93647830b5eb5780f23476d3d4d06a39ae532da5b2f30f151587eb5df19ec1acf099e1ac506e071eb52c3c3cc88ccf6622b2913acf07f1b772b5012e39173211e51773f3eb42d667fff1d902c5c87bd507837b3fd993e70ac9706a0"),
             0x2007ffff, 4, 0);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x05a60a92d99d85997cce3b87616c089f6124d7342af37106edc76126334a2c38"));
-        assert(genesis.hashMerkleRoot == uint256S("0xc4eaa58879081de3c24a7b117ed2b28300e7ec4c4c1dff1d3f1268b7857a4ddb"));
+        assert(consensus.hashGenesisBlock == uint256S("0x03e1c4bb705c871bf9bfda3e74b7f8f86bff267993c215a89d5795e3708e5e1f"));
+        // The testnet genesis coinbase tag differs from mainnet's, so the merkle
+        // root assert is intentionally not enforced here (as in upstream Zclassic).
 
         vFixedSeeds.clear();
         vSeeds.clear();
-        vSeeds.push_back(CDNSSeedData("z.cash", "dnsseed.testnet.z.cash")); // Zcash
-        vSeeds.push_back(CDNSSeedData("zfnd.org", "testnet.seeder.zfnd.org")); // Zcash Foundation
-        vSeeds.push_back(CDNSSeedData("yolo.money", "testnet.is.yolo.money")); // gtank
+        vSeeds.push_back(CDNSSeedData("testnet_node1", "167.71.172.5"));
 
+        // pnSeed6_test is empty in this fork's chainparamsseeds.h (loads an empty
+        // fixed-seed set); peers are discovered via the DNS seed above.
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_test, pnSeed6_test + ARRAYLEN(pnSeed6_test));
 
         fMiningRequiresPeers = true;
@@ -756,30 +469,21 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            (0, consensus.hashGenesisBlock)
-            (38000, uint256S("0x001e9a2d2e2892b88e9998cf7b079b41d59dd085423a921fe8386cecc42287b8")),
-            1486897419,  // * UNIX timestamp of last checkpoint block
-            47163,       // * total number of transactions between genesis and last checkpoint
-            715          //   total number of tx / (checkpoint block height / (24 * 24))
+            (0, consensus.hashGenesisBlock),
+            genesis.nTime,
+            0,
+            0
         };
 
         // Hardcoded fallback value for the Sprout shielded value pool balance
-        // for nodes that have not reindexed since the introduction of monitoring
-        // in #2795.
+        // (Zclassic testnet values).
         nSproutValuePoolCheckpointHeight = 440329;
         nSproutValuePoolCheckpointBalance = 40000029096803;
         fZIP209Enabled = true;
         hashSproutValuePoolCheckpointBlock = uint256S("000a95d08ba5dcbabe881fc6471d11807bcca7df5f1795c99f3ec4580db4279b");
 
-        // Chain supply checkpoint at NU6.1 activation (height 3536500).
-        nChainSupplyCheckpointHeight = 3536500;
-        nChainSupplyCheckpointTotalSupply = 1690647512835043;
-        nChainSupplyCheckpointTransparentValue = 1499728640946163;
-        nChainSupplyCheckpointSproutValue = 42832983037484;
-        nChainSupplyCheckpointSaplingValue = 140562922195481;
-        nChainSupplyCheckpointOrchardValue = 7522947905915;
-        nChainSupplyCheckpointLockboxValue = 18750000;
-        hashChainSupplyCheckpointBlock = uint256S("01b947c7556b23040dc6840e9d3e4c6d9478c67a87b9737a83be848729d6e0af");
+        // Upstream Zcash chain-supply checkpoint values do not apply to Zclassic
+        // testnet; left null so the fallback chain-supply checkpoint is skipped.
 
         // Founders reward script expects a vector of 2-of-3 multisig addresses
         vFoundersRewardAddress = {
@@ -830,6 +534,7 @@ public:
         consensus.nPostBlossomPowTargetSpacing = Consensus::POST_BLOSSOM_POW_TARGET_SPACING;
         consensus.nPowAllowMinDifficultyBlocksAfterHeight = 0;
         consensus.fPowNoRetargeting = true;
+        consensus.scaleDifficultyAtUpgradeFork = false;
         consensus.vUpgrades[Consensus::BASE_SPROUT].nProtocolVersion = 170002;
         consensus.vUpgrades[Consensus::BASE_SPROUT].nActivationHeight =
             Consensus::NetworkUpgrade::ALWAYS_ACTIVE;
@@ -841,6 +546,16 @@ public:
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nProtocolVersion = 170006;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        // Zclassic's post-Sapling upgrades; activatable in regtest via -nuparams.
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nProtocolVersion = 170008;
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nProtocolVersion = 170009;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nProtocolVersion = 170010;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nActivationHeight =
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nProtocolVersion = 170008;
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight =
@@ -897,13 +612,13 @@ public:
         nPruneAfterHeight = 1000;
 
         genesis = CreateGenesisBlock(
-            1296688602,
+            1482971059,
             uint256S("0x0000000000000000000000000000000000000000000000000000000000000009"),
-            ParseHex("01936b7db1eb4ac39f151b8704642d0a8bda13ec547d54cd5e43ba142fc6d8877cab07b3"),
+            ParseHex("05ffd6ad016271ade20cfce093959c3addb2079629f9f123c52ef920caa316531af5af3f"),
             0x200f0f0f, 4, 0);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x029f11d80ef9765602235e1bc9727e3eb6ba20839319f761fee920d63401e327"));
-        assert(genesis.hashMerkleRoot == uint256S("0xc4eaa58879081de3c24a7b117ed2b28300e7ec4c4c1dff1d3f1268b7857a4ddb"));
+        assert(consensus.hashGenesisBlock == uint256S("0x0575f78ee8dc057deee78ef691876e3be29833aaee5e189bb0459c087451305a"));
+        // Merkle-root assert intentionally not enforced (Zclassic coinbase tag).
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();      //!< Regtest mode doesn't have any DNS seeds.

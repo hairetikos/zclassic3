@@ -90,7 +90,10 @@ public:
         strCurrencyUnits = "ZCL";
         keyConstants.bip44CoinType = 147; // As registered in https://github.com/satoshilabs/slips/blob/master/slip-0044.md
         consensus.fCoinbaseMustBeShielded = true;
-        consensus.nSubsidySlowStartInterval = 20000;
+        // Zclassic uses a 2-block mining slow start (height 0 -> 0, height 1 ->
+        // 12.5, height 2+ -> full schedule). The pre/post-Blossom halving-interval
+        // fields hold Zclassic's pre/post-Buttercup intervals (840000 / 1680000).
+        consensus.nSubsidySlowStartInterval = 2;
         consensus.nPreBlossomSubsidyHalvingInterval = Consensus::PRE_BLOSSOM_HALVING_INTERVAL;
         consensus.nPostBlossomSubsidyHalvingInterval = POST_BLOSSOM_HALVING_INTERVAL(Consensus::PRE_BLOSSOM_HALVING_INTERVAL);
         consensus.nMajorityEnforceBlockUpgrade = 750;
@@ -120,9 +123,16 @@ public:
         consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nActivationHeight = 476969;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nProtocolVersion = 170007;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight = 476969;
+        // Zclassic's own post-Sapling upgrades.
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nProtocolVersion = 170009;
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nActivationHeight = 585318;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nProtocolVersion = 170010;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nActivationHeight = 585322;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nProtocolVersion = 170011;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nActivationHeight = 707000;
         // Zclassic never activated Blossom, Heartwood, Canopy, NU5, NU6 or NU6.1.
-        // Zclassic's own post-Sapling upgrades (Bubbles, DiffAdj, Buttercup) are
-        // ported in a later phase. Until then these Zcash upgrades remain disabled.
+        // These Zcash upgrades remain defined but disabled (see the upgrade-table
+        // note in consensus/params.h).
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nProtocolVersion = 170009;
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight =
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
@@ -305,7 +315,7 @@ public:
         strCurrencyUnits = "ZCT";
         keyConstants.bip44CoinType = 1;
         consensus.fCoinbaseMustBeShielded = true;
-        consensus.nSubsidySlowStartInterval = 20000;
+        consensus.nSubsidySlowStartInterval = 2;
         consensus.nPreBlossomSubsidyHalvingInterval = Consensus::PRE_BLOSSOM_HALVING_INTERVAL;
         consensus.nPostBlossomSubsidyHalvingInterval = POST_BLOSSOM_HALVING_INTERVAL(Consensus::PRE_BLOSSOM_HALVING_INTERVAL);
         consensus.nMajorityEnforceBlockUpgrade = 51;
@@ -335,8 +345,15 @@ public:
         consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nActivationHeight = 20;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nProtocolVersion = 170007;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight = 20;
-        // Zclassic's post-Sapling upgrades (Bubbles, DiffAdj, Buttercup) are ported
-        // in a later phase; the Zcash post-Sapling upgrades remain disabled.
+        // Zclassic testnet post-Sapling upgrades. DiffAdj was never activated on
+        // Zclassic testnet.
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nProtocolVersion = 170008;
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nActivationHeight = 6350;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nProtocolVersion = 170009;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nProtocolVersion = 170010;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nActivationHeight = 78856;
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nProtocolVersion = 170008;
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight =
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
@@ -524,6 +541,16 @@ public:
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nProtocolVersion = 170006;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        // Zclassic's post-Sapling upgrades; activatable in regtest via -nuparams.
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nProtocolVersion = 170008;
+        consensus.vUpgrades[Consensus::UPGRADE_BUBBLES].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nProtocolVersion = 170009;
+        consensus.vUpgrades[Consensus::UPGRADE_DIFFADJ].nActivationHeight =
+            Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nProtocolVersion = 170010;
+        consensus.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nActivationHeight =
             Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nProtocolVersion = 170008;
         consensus.vUpgrades[Consensus::UPGRADE_BLOSSOM].nActivationHeight =

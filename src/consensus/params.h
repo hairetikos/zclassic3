@@ -36,6 +36,15 @@ enum UpgradeIndex : uint32_t {
     UPGRADE_TESTDUMMY,
     UPGRADE_OVERWINTER,
     UPGRADE_SAPLING,
+    // Zclassic's own post-Sapling upgrades. These are inserted here (in ascending
+    // activation-height order) so that on Zclassic the sequence of *enabled*
+    // upgrades is Overwinter/Sapling -> Bubbles -> DiffAdj -> Buttercup. The Zcash
+    // upgrades below (Blossom..NU6.1) remain defined but disabled on Zclassic;
+    // keeping them intact preserves the ability to enable Orchard/NU5 etc. via a
+    // future Zclassic network upgrade (see doc/zclassicd-port-plan.md).
+    UPGRADE_BUBBLES,
+    UPGRADE_DIFFADJ,
+    UPGRADE_BUTTERCUP,
     UPGRADE_BLOSSOM,
     UPGRADE_HEARTWOOD,
     UPGRADE_CANOPY,

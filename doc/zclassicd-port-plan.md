@@ -150,13 +150,28 @@ Goal: only coinbase value rule is `coinbase <= subsidy + fees`.
 > cleanup. The funding-stream enforcement in `ContextualCheckTransaction` is gated
 > on Canopy/Heartwood/NU6 (all disabled) so it never executes.
 
-### Phase 3 — Subsidy & halving math → ZCL's
+### Phase 3 — Subsidy & halving math → ZCL's  ✅ DONE
 File: `consensus/params.cpp`.
-- Rewrite `GetBlockSubsidy()` / `Halving()` / `HalvingHeight()` to ZCL
-  semantics: `12.5*COIN` base, slow-start interval 2, Buttercup branch
-  `(nSubsidy/2) >> halvings` with the `+3` offset, 840k/1.68M intervals.
-- Repurpose `nPreBlossom*` / `nPostBlossom*` interval fields as
-  Pre/Post-Buttercup (Buttercup is structurally ZCL's "Blossom").
+- Rewrite `GetBlockSubsidy()` / `Halving()` to ZCL semantics: `12.5*COIN` base,
+  slow-start interval 2, Buttercup branch `(nSubsidy/2) >> halvings` with the
+  `+3` offset, 840k/1.68M intervals.
+- Reuse `nPreBlossom*` / `nPostBlossom*` interval fields as Pre/Post-Buttercup
+  (Buttercup is structurally ZCL's "Blossom"; identical values 840000/1680000
+  and spacing 150/75).
+
+> Implemented: `Halving()` now keys on `UPGRADE_BUTTERCUP` with the `+3` triple-
+> halving offset; `GetBlockSubsidy()` and `PoWTargetSpacing()` key on Buttercup
+> (150s→75s at 707000); `nSubsidySlowStartInterval = 2` (mainnet+testnet). This
+> reproduces the reference exactly, including the Buttercup-activation reward of
+> `(12.5/2) >> 3 = 0.78125 ZCL` at height 707000. `HalvingHeight()` and
+> `GetLastFoundersRewardBlockHeight()` are left Blossom-keyed but are only reached
+> by vestigial/inert paths (founders asserts, empty funding streams), so they do
+> not affect consensus.
+>
+> **Note:** because ZCL's subsidy math keys on `UPGRADE_BUTTERCUP`, the
+> *structural* parts of Phase 4 (adding the `UPGRADE_BUBBLES/DIFFADJ/BUTTERCUP`
+> enum entries, branch IDs, and activation heights) were pulled forward into this
+> commit — see Phase 4.
 
 ### Phase 4 — Port ZCL's upgrade table & branch IDs (HIGHEST RISK)
 Files: `consensus/params.h`, `consensus/upgrades.{cpp,h}`, `chainparams.cpp`,
@@ -165,13 +180,29 @@ plus every `NetworkUpgradeActive(...)` call site.
   `0x930b540d`; the new node must compute identical sighashes, so
   `CurrentEpochBranchId(height)` must return ZCL's values.
 - Add `UPGRADE_BUBBLES`, `UPGRADE_DIFFADJ`, `UPGRADE_BUTTERCUP` to
-  `UpgradeIndex` and `NetworkUpgradeInfo[]` with exact branch IDs/heights; set
-  `BLOSSOM … NU6_1` to `NO_ACTIVATION_HEIGHT (-1)`.
+  `UpgradeIndex` and `NetworkUpgradeInfo[]` with exact branch IDs/heights; keep
+  `BLOSSOM … NU6_1` defined but at `NO_ACTIVATION_HEIGHT (-1)`.
 - Audit every `NetworkUpgradeActive(…, UPGRADE_BLOSSOM/CANOPY/HEARTWOOD/NU5…)`
   call site. Re-point the block-spacing/subsidy ones to `UPGRADE_BUTTERCUP`;
   leave Orchard/funding ones dead (NU5 never activates).
 - Preserve the enum's "sorted by activation height" invariant that
   `upgrades.cpp` relies on.
+
+> Partially DONE (structural part, done together with Phase 3): the three ZCL
+> upgrades are added to the `UpgradeIndex` enum (inserted after `UPGRADE_SAPLING`,
+> before the disabled Zcash upgrades, preserving ascending activation order) and
+> to `NetworkUpgradeInfo[]` with exact branch IDs (`Bubbles` 0x821a451c; `Bubbly`
+> /DiffAdj and `Buttercup` both 0x930b540d, matching the live chain). Activation
+> heights set for all three networks (mainnet 585318/585322/707000, testnet
+> 6350/disabled/78856, regtest disabled). The subsidy/spacing call sites are
+> re-pointed to Buttercup (Phase 3).
+>
+> **Still remaining for Phase 4:** a full audit of *every* `UPGRADE_BLOSSOM/
+> HEARTWOOD/CANOPY/NU5` reference to confirm each is either correctly re-pointed
+> to a ZCL upgrade or correctly inert; and verification that `CurrentEpochBranchId`
+> yields ZCL's branch IDs across the Bubbles/DiffAdj/Buttercup boundaries (the
+> sighash-parity check). No `hashActivationBlock` values are set (matches upstream
+> Zclassic, which relied on checkpoints + the fast-sync anchor instead).
 
 ### Phase 5 — PoW: difficulty + Equihash params
 File: `pow.cpp`, `consensus/params.cpp`, `chainparams.cpp`.

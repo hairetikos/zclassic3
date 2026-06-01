@@ -30,6 +30,23 @@ const struct NUInfo NetworkUpgradeInfo[Consensus::MAX_NETWORK_UPGRADES] = {
         .strInfo = "See https://z.cash/upgrade/sapling/ for details.",
     },
     {
+        .nBranchId = 0x821a451c,
+        .strName = "Bubbles",
+        .strInfo = "Zclassic network upgrade.",
+    },
+    {
+        // DiffAdj shares its consensus branch id with Buttercup, matching the
+        // live Zclassic chain.
+        .nBranchId = 0x930b540d,
+        .strName = "Bubbly",
+        .strInfo = "Zclassic network upgrade (difficulty adjustment).",
+    },
+    {
+        .nBranchId = 0x930b540d,
+        .strName = "Buttercup",
+        .strInfo = "Zclassic network upgrade.",
+    },
+    {
         .nBranchId = 0x2bb40e60,
         .strName = "Blossom",
         .strInfo = "See https://z.cash/upgrade/blossom/ for details.",

@@ -6275,6 +6275,15 @@ bool static LoadBlockIndexDB(const CChainParams& chainparams)
         vSortedByHeight.push_back(make_pair(pindex->nHeight, pindex));
     }
     sort(vSortedByHeight.begin(), vSortedByHeight.end());
+
+    // This pass accumulates chain work and per-pool chain values for every block
+    // (and, at/after the chain-supply checkpoint, re-reads block data from disk to
+    // verify pool deltas). It is single-threaded, so log progress; otherwise a
+    // fully-synced chain of millions of blocks looks like a 100% CPU hang here.
+    LogPrintf("LoadBlockIndexDB: computing chain work and pool values for %u blocks...\n",
+              (unsigned)vSortedByHeight.size());
+    int64_t nChainWorkStartMs = GetTimeMillis();
+    int64_t nProcessed = 0;
     for (const std::pair<int, CBlockIndex*>& item : vSortedByHeight)
     {
         CBlockIndex* pindex = item.second;
@@ -6415,7 +6424,16 @@ bool static LoadBlockIndexDB(const CChainParams& chainparams)
             pindex->BuildSkip();
         if (pindex->IsValid(BLOCK_VALID_TREE) && (pindexBestHeader == NULL || CBlockIndexWorkComparator()(pindexBestHeader, pindex)))
             pindexBestHeader = pindex;
+
+        if (++nProcessed % 250000 == 0) {
+            LogPrintf("LoadBlockIndexDB: processed %d/%u blocks (%.1fs)...\n",
+                      nProcessed, (unsigned)vSortedByHeight.size(),
+                      (GetTimeMillis() - nChainWorkStartMs) * 0.001);
+        }
     }
+
+    LogPrintf("LoadBlockIndexDB: computed chain work and pool values for %d blocks in %.1fs\n",
+              nProcessed, (GetTimeMillis() - nChainWorkStartMs) * 0.001);
 
     // Load block file info
     pblocktree->ReadLastBlockFile(nLastBlockFile);

@@ -17,6 +17,23 @@
 #include <librustzcash.h>
 #include <rust/equihash.h>
 
+/**
+ * Manually increase difficulty by a multiplier. Because of the use of compact
+ * bits this is only an approximate increase, not 100% precise. (Ported from
+ * Zclassic; used by the graduated fork-scaling rule below.)
+ */
+unsigned int IncreaseDifficultyBy(unsigned int nBits, int64_t multiplier, const Consensus::Params& params)
+{
+    arith_uint256 target;
+    target.SetCompact(nBits);
+    target /= multiplier;
+    const arith_uint256 pow_limit = UintToArith256(params.powLimit);
+    if (target > pow_limit) {
+        target = pow_limit;
+    }
+    return target.GetCompact();
+}
+
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
@@ -28,6 +45,37 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
     // Regtest
     if (params.fPowNoRetargeting)
         return pindexLast->nBits;
+
+    int nHeight = pindexLast->nHeight + 1;
+
+    // Zclassic graduated fork-scaling: for the first nPowAveragingWindow blocks
+    // after the DiffAdj and Buttercup upgrade forks, relax the difficulty based
+    // on how far ahead of the previous block the candidate's timestamp is, so the
+    // network can recover quickly from the spacing change.
+    //
+    // NOTE: the && / || grouping below is reproduced exactly from the Zclassic
+    // reference (where '&&' binds tighter than '||'), so it parses as
+    //   (scaleDifficultyAtUpgradeFork && <DiffAdj window>) || <Buttercup window>.
+    // On mainnet scaleDifficultyAtUpgradeFork is true so both windows apply; this
+    // grouping is preserved deliberately for bug-for-bug consensus parity.
+    if ((params.scaleDifficultyAtUpgradeFork &&
+         (nHeight >= params.vUpgrades[Consensus::UPGRADE_DIFFADJ].nActivationHeight &&
+          nHeight < params.vUpgrades[Consensus::UPGRADE_DIFFADJ].nActivationHeight + params.nPowAveragingWindow)) ||
+        (nHeight >= params.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nActivationHeight &&
+         nHeight < params.vUpgrades[Consensus::UPGRADE_BUTTERCUP].nActivationHeight + params.nPowAveragingWindow)) {
+
+        if (pblock && pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.PoWTargetSpacing(nHeight) * 12) {
+            // If > 12x spacing ahead, allow min difficulty.
+            return nProofOfWorkLimit;
+        } else if (pblock && pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.PoWTargetSpacing(nHeight) * 6) {
+            // If > 6x spacing ahead, allow low estimate difficulty.
+            return IncreaseDifficultyBy(nProofOfWorkLimit, 128, params);
+        } else if (pblock && pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.PoWTargetSpacing(nHeight) * 2) {
+            // If > 2x spacing ahead, allow high estimate difficulty.
+            return IncreaseDifficultyBy(nProofOfWorkLimit, 256, params);
+        }
+        // Otherwise fall through to the normal averaging-window retarget.
+    }
 
     {
         // Comparing to pindexLast->nHeight with >= because this function
@@ -106,8 +154,27 @@ unsigned int CalculateNextWorkRequired(arith_uint256 bnAvg,
 
 bool CheckEquihashSolution(const CBlockHeader *pblock, const Consensus::Params& params)
 {
-    unsigned int n = params.nEquihashN;
-    unsigned int k = params.nEquihashK;
+    // Zclassic derives the Equihash (n, k) parameters from the solution size,
+    // because the block header does not record which parameters were used and the
+    // Zclassic chain contains both (200, 9) and (192, 7) blocks (the network moved
+    // to 192,7 well before the formal Bubbles upgrade height). This matches the
+    // reference's CheckEquihashSolution exactly. For any other solution size we
+    // fall back to the configured parameters (e.g. custom regtest params), which
+    // equihash::is_valid will then reject if they don't match.
+    unsigned int n, k;
+    size_t nSolSize = pblock->nSolution.size();
+    if (nSolSize == 1344) {        // mainnet / testnet (Equihash 200,9)
+        n = 200; k = 9;
+    } else if (nSolSize == 400) {  // Equihash 192,7
+        n = 192; k = 7;
+    } else if (nSolSize == 68) {   // Equihash 96,5
+        n = 96; k = 5;
+    } else if (nSolSize == 36) {   // regtest genesis (Equihash 48,5)
+        n = 48; k = 5;
+    } else {
+        n = params.nEquihashN;
+        k = params.nEquihashK;
+    }
 
     // I = the block header minus nonce and solution.
     CEquihashInput I{*pblock};

@@ -513,6 +513,13 @@ struct Params {
     int64_t nPreBlossomPowTargetSpacing;
     int64_t nPostBlossomPowTargetSpacing;
 
+    /**
+     * Zclassic-specific: when true, GetNextWorkRequired temporarily relaxes the
+     * difficulty for the first nPowAveragingWindow blocks after the DiffAdj and
+     * Buttercup upgrade activation heights (the "graduated fork scaling" rule).
+     * Enabled on mainnet; disabled on testnet/regtest (matches the reference).
+     */
+    bool scaleDifficultyAtUpgradeFork = false;
     int64_t PoWTargetSpacing(int nHeight) const;
     int64_t AveragingWindowTimespan(int nHeight) const;
     int64_t MinActualTimespan(int nHeight) const;

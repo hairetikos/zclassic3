@@ -197,21 +197,45 @@ plus every `NetworkUpgradeActive(...)` call site.
 > 6350/disabled/78856, regtest disabled). The subsidy/spacing call sites are
 > re-pointed to Buttercup (Phase 3).
 >
-> **Still remaining for Phase 4:** a full audit of *every* `UPGRADE_BLOSSOM/
-> HEARTWOOD/CANOPY/NU5` reference to confirm each is either correctly re-pointed
-> to a ZCL upgrade or correctly inert; and verification that `CurrentEpochBranchId`
-> yields ZCL's branch IDs across the Bubbles/DiffAdj/Buttercup boundaries (the
-> sighash-parity check). No `hashActivationBlock` values are set (matches upstream
+> Phase 4 call-site audit (DONE): every non-test `UPGRADE_BLOSSOM/HEARTWOOD/
+> CANOPY/NU5` reference is either (a) inert and correctly so — ZCL predates those
+> upgrades, so the disabled (`-1`) heights keep the pre-upgrade code paths active
+> (MMR/ZIP-221 history, shielded coinbase, funding streams, strict ZIP-212, etc.
+> all correctly never run); or (b) already re-pointed to Buttercup
+> (subsidy/spacing/halving, Phase 3) or solution-size-dispatched (Equihash,
+> Phase 5). `CurrentEpochBranchId` returns ZCL's branch IDs across the
+> Bubbles/DiffAdj/Buttercup boundaries by construction (enum order + verified
+> activation heights). No `hashActivationBlock` values are set (matches upstream
 > Zclassic, which relied on checkpoints + the fast-sync anchor instead).
+>
+> One non-consensus item intentionally left as-is: `main.cpp` (~9184) keys the
+> *default expiry delta for newly created wallet transactions* on Blossom, so
+> post-Buttercup new txs use the 20-block (pre-Blossom) default rather than 40.
+> This is local wallet behaviour, not validation, so it does not affect sync or
+> consensus; it could optionally be re-pointed to Buttercup later for usability.
 
-### Phase 5 — PoW: difficulty + Equihash params
-File: `pow.cpp`, `consensus/params.cpp`, `chainparams.cpp`.
-- Port `scaleDifficultyAtUpgradeFork` + graduated fork-scaling (`pow.cpp:44-69`)
-  keyed on DiffAdj/Buttercup heights, plus the 17-block averaging retarget with
-  ZCL's bounds.
-- Make Equihash (N,K) **height-dependent**: 200,9 before Bubbles, 192,7 from
-  Bubbles. Modern Zcash carries a single `nEquihashN/K`; port the
-  solution-size → (N,K) selection so blocks on both sides validate.
+### Phase 5 — PoW: difficulty + Equihash params  ✅ DONE
+File: `pow.cpp`, `consensus/params.{h,cpp}`, `chainparams.cpp`.
+- Added `Consensus::Params::scaleDifficultyAtUpgradeFork` (true on mainnet, false
+  on testnet/regtest) and ported the graduated fork-scaling into
+  `GetNextWorkRequired`: for the first `nPowAveragingWindow` blocks after the
+  DiffAdj/Buttercup forks, relax difficulty by timestamp gap (min-difficulty at
+  >12x spacing, ÷128 at >6x, ÷256 at >2x via the new `IncreaseDifficultyBy`),
+  else fall through to the normal 17-block averaging retarget (which already
+  matched the reference). The reference's `&&`/`||` grouping bug is reproduced
+  exactly (with explicit parens to silence `-Wparentheses`) for consensus parity.
+- **Equihash is solution-size–dispatched, not height-dependent.** The reference's
+  `CheckEquihashSolution` derives `(n,k)` from `nSolution.size()`
+  (1344→200,9; 400→192,7; 68→96,5; 36→48,5) and ignores `EquihashN(height)`,
+  so the chain freely contains both 200,9 and 192,7 blocks (the network moved to
+  192,7 ~2017, long before the formal Bubbles height 585318). Ported that exact
+  dispatch into `CheckEquihashSolution`, falling back to the configured
+  `nEquihashN/K` for any other size (e.g. custom regtest params).
+
+> Discovery during sync: a 400-byte (192,7) solution was rejected at ~height 135k
+> while the node expected 1344 (200,9) — confirming Equihash must be dispatched by
+> solution size, decoupled from the Bubbles upgrade epoch (which governs only the
+> branch id / sighash).
 
 ### Phase 6 — Cap transactions at Sapling (v4)
 - Leave NU5 … NU6.1 unactivated. `ContextualCheckTransaction` then **already**

@@ -329,6 +329,7 @@ std::string HelpMessage(HelpMessageMode mode)
         strUsage += HelpMessageOpt("-blocksonly", strprintf(_("Whether to reject transactions from network peers. Automatic broadcast and rebroadcast of any transactions from inbound peers is disabled, unless '-whitelistforcerelay' is '1', in which case whitelisted peers' transactions will be relayed. RPC transactions are not affected. (default: %u)"), DEFAULT_BLOCKSONLY));
     strUsage += HelpMessageOpt("-checkblocks=<n>", strprintf(_("How many blocks to check at startup (default: %u, 0 = all)"), DEFAULT_CHECKBLOCKS));
     strUsage += HelpMessageOpt("-checklevel=<n>", strprintf(_("How thorough the block verification of -checkblocks is (0-4, default: %u)"), DEFAULT_CHECKLEVEL));
+    strUsage += HelpMessageOpt("-pooldeltacheckdepth=<n>", strprintf(_("At startup, re-read this many of the most recent blocks from disk to re-verify the persisted shielded-pool deltas (default: %d, 0 = all blocks). Lower values speed up startup on a long chain; the cumulative pool values are loaded from persisted deltas regardless."), DEFAULT_POOL_DELTA_CHECK_DEPTH));
     strUsage += HelpMessageOpt("-conf=<file>", strprintf(_("Specify configuration file. Relative paths will be prefixed by datadir location. (default: %s)"), BITCOIN_CONF_FILENAME));
     if (mode == HMM_BITCOIND)
     {

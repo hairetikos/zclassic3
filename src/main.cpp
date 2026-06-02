@@ -6276,12 +6276,25 @@ bool static LoadBlockIndexDB(const CChainParams& chainparams)
     }
     sort(vSortedByHeight.begin(), vSortedByHeight.end());
 
+    // Determine how far back to re-verify shielded-pool deltas by re-reading
+    // blocks from disk (see -pooldeltacheckdepth). Re-reading every block on every
+    // startup is many minutes of single-threaded I/O on a long chain; the
+    // cumulative pool values are loaded from the persisted per-block deltas either
+    // way, so by default we only re-verify the most recent N blocks. 0 = all.
+    int64_t poolDeltaCheckDepth = GetArg("-pooldeltacheckdepth", DEFAULT_POOL_DELTA_CHECK_DEPTH);
+    int nTipHeight = vSortedByHeight.empty() ? 0 : vSortedByHeight.back().first;
+    int nPoolDeltaCheckMinHeight = (poolDeltaCheckDepth <= 0)
+        ? 0
+        : std::max(0, nTipHeight - (int)poolDeltaCheckDepth + 1);
+
     // This pass accumulates chain work and per-pool chain values for every block
-    // (and, at/after the chain-supply checkpoint, re-reads block data from disk to
-    // verify pool deltas). It is single-threaded, so log progress; otherwise a
-    // fully-synced chain of millions of blocks looks like a 100% CPU hang here.
-    LogPrintf("LoadBlockIndexDB: computing chain work and pool values for %u blocks...\n",
-              (unsigned)vSortedByHeight.size());
+    // (and, at/after the chain-supply checkpoint, re-reads recent block data from
+    // disk to verify pool deltas). It is single-threaded, so log progress;
+    // otherwise a fully-synced chain of millions of blocks looks like a hang here.
+    LogPrintf("LoadBlockIndexDB: computing chain work and pool values for %u blocks "
+              "(re-verifying pool deltas for blocks at height >= %d)...\n",
+              (unsigned)vSortedByHeight.size(),
+              poolDeltaCheckDepth <= 0 ? chainparams.ChainSupplyCheckpointHeight() : nPoolDeltaCheckMinHeight);
     int64_t nChainWorkStartMs = GetTimeMillis();
     int64_t nProcessed = 0;
     for (const std::pair<int, CBlockIndex*>& item : vSortedByHeight)
@@ -6367,6 +6380,7 @@ bool static LoadBlockIndexDB(const CChainParams& chainparams)
             // deltas from the duplicate-header clobbering bug or other on-disk
             // corruption.
             if (pindex->nHeight >= chainparams.ChainSupplyCheckpointHeight()
+                    && pindex->nHeight >= nPoolDeltaCheckMinHeight
                     && !CheckRecomputedPoolDeltas(pindex, chainparams, fHavePruned)) {
                 return false;
             }

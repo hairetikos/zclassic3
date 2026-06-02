@@ -240,6 +240,15 @@ static const unsigned int MIN_BLOCKS_TO_KEEP = 288;
 static const signed int DEFAULT_CHECKBLOCKS = MIN_BLOCKS_TO_KEEP;
 static const unsigned int DEFAULT_CHECKLEVEL = 3;
 
+//! Default for -pooldeltacheckdepth. At startup, LoadBlockIndexDB can re-read
+//! every block from disk to recompute and verify the persisted shielded-pool
+//! deltas. On a long chain that is many minutes of single-threaded I/O on every
+//! startup, so by default we only re-verify the most recent N blocks (where
+//! undetected persisted-delta corruption would matter most); 0 means verify all.
+//! The cumulative pool values themselves are always loaded from the persisted
+//! per-block deltas regardless of this setting.
+static const signed int DEFAULT_POOL_DELTA_CHECK_DEPTH = 1000;
+
 /** Prefer to create v4 transactions. */
 static const int32_t DEFAULT_PREFERRED_TX_VERSION = ZIP225_TX_VERSION;
 static const std::set<int32_t> SUPPORTED_TX_VERSIONS = { SAPLING_TX_VERSION, ZIP225_TX_VERSION };

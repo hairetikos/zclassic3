@@ -405,11 +405,59 @@ fine:
   (Note: `z_sendmany` also defaults to 10 confirmations — `DEFAULT_NOTE_CONFIRMATIONS`
   — so a freshly-received note shows in `z_listunspent` (minconf 1) before it is
   spendable by `z_sendmany`.)
-  The long-term cleaner option is a maintained fork of the zcash Rust crates that
-  adds Zclassic's branch IDs (Bubbles `0x821a451c`, DiffAdj/Buttercup `0x930b540d`)
-  as first-class variants. `src/rust/src/history.rs` also calls
-  `BranchId::try_from` but only for the Heartwood MMR (disabled on Zclassic), so it
-  is not reached.
+  `src/rust/src/history.rs` also calls `BranchId::try_from` but only for the
+  Heartwood MMR (disabled on Zclassic), so it is not reached.
+
+### Replay protection / branch-ID security
+The consensus branch ID *is* the replay-protection mechanism: it is mixed into
+the BLAKE2b personalization of the v4 (ZIP-243) transaction sighash, so a
+signature is only valid under one specific branch ID. Zclassic's
+`0x930b540d` (Buttercup) is distinct from every Zcash branch ID, so:
+
+- Zclassic transactions cannot be replayed on Zcash and vice versa (different
+  branch ID ⇒ different sighash ⇒ invalid signature on the other chain). This
+  applies to transparent inputs (post-Overwinter) and to the Sapling binding
+  signature alike. (Pre-Overwinter Sprout v1/v2 sighashes have no branch ID, but
+  all new Zclassic transactions are v4.)
+- The `Canopy → 0x930b540d` repurpose patch does **not** weaken this: the sighash
+  still uses the real `0x930b540d`; the patch only teaches the Rust enum to
+  recognise that value. Replay protection is unchanged.
+- The patch is also fail-safe: it only affects transaction *construction* (C++
+  still validates with the raw branch ID). A mistake would produce a transaction
+  the network rejects, never one it wrongly accepts.
+
+Caveats to keep in mind: the patch currently maps only Buttercup `0x930b540d`
+(the branch ID for all transactions at today's tip). Bubbles `0x821a451c`
+(heights 585318–585321) is not mapped, which is fine because new transactions
+never use it. A *future* Zclassic network upgrade with a new branch ID would
+need the patch (and ideally the proper fork below) updated. Replay between
+Zclassic and other ZCL-derived chains (e.g. BTCP) is likewise governed by branch
+IDs differing — worth confirming if that ever becomes relevant.
+
+**This patch is the right approach _for now_.** It is minimal, reuses the
+crates' audited ZIP-243 sighash, and is fail-safe.
+
+### Long-term: ship fully-patched zcash Rust crates
+The repurpose patch is a pragmatic stop-gap. The clean long-term solution is a
+**maintained fork of the zcash Rust crates** (`zcash_protocol`, and anything that
+matches on `BranchId` — `zcash_primitives`, `sapling-crypto`, `orchard`) that adds
+Zclassic's branch IDs as *first-class* `BranchId` variants:
+
+- `Bubbles` = `0x821a451c`, `DiffAdj`/`Buttercup` = `0x930b540d`, plus any future
+  Zclassic upgrades — rather than renumbering Zcash's `Canopy`.
+- Vendor these forks under `depends/` (or a Zclassic Git fork) and wire them via
+  `[patch.crates-io]`, replacing the current single-constant repurpose. The
+  vendoring/lockfile plumbing added for the stop-gap (`depends/patches/`,
+  `depends/Makefile` lockfile handling) carries over directly.
+- Benefits: supports *all* Zclassic branch IDs at once (not just the current
+  epoch), survives crate upgrades more cleanly (a real diff vs. a sed), keeps
+  `BranchId::for_height` semantics honest, and is auditable.
+- Cost: the fork must be re-based whenever the upstream zcash crates are bumped,
+  since adding an enum variant touches every exhaustive `match BranchId` in the
+  dependency tree.
+
+Until that fork exists, `depends/patches/apply-zcash-protocol-branchid-patch.sh`
+is the supported mechanism.
 
 ---
 

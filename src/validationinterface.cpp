@@ -23,7 +23,7 @@ using namespace boost::placeholders;
 
 static CMainSignals g_signals;
 
-static constexpr const char* METRIC_WALLET_SYNCED_HEIGHT = "zcashd.wallet.synced.block.height";
+static constexpr const char* METRIC_WALLET_SYNCED_HEIGHT = "zclassicd.wallet.synced.block.height";
 
 CMainSignals& GetMainSignals()
 {
@@ -249,7 +249,7 @@ void ThreadNotifyWallets(CBlockIndex *pindexLastTip)
         //     - If the transaction belongs to the wallet:
         //       - 2️⃣ Add or update the transaction, and mark it as dirty.
         //   - Update the wallet's view of the chain tip.
-        //     - 3️⃣ In `zcashd`, this is when we decrement note witnesses.
+        //     - 3️⃣ In `zclassicd`, this is when we decrement note witnesses.
         // - For each block in the new chain, from the fork point to its tip:
         //   - For each transaction that became conflicted by this block:
         //     - 4️⃣ Trial-decrypt the transaction's shielded outputs.
@@ -260,7 +260,7 @@ void ThreadNotifyWallets(CBlockIndex *pindexLastTip)
         //     - If the transaction belongs to the wallet:
         //       - 7️⃣ Add or update the transaction, and mark it as dirty.
         //   - Update the wallet's view of the chain tip.
-        //     - 8️⃣ In `zcashd`, this is when we increment note witnesses.
+        //     - 8️⃣ In `zclassicd`, this is when we increment note witnesses.
         // - For each transaction in the mempool:
         //   - 9️⃣ Trial-decrypt the transaction's shielded outputs.
         //   - If the transaction belongs to the wallet:
@@ -293,7 +293,7 @@ void ThreadNotifyWallets(CBlockIndex *pindexLastTip)
         //       that belong to the wallet:
         //       - 2️⃣ Add or update the transaction, and mark it as dirty.
         //   - Update the wallet's view of the chain tip.
-        //     - 3️⃣ In `zcashd`, this is when we decrement note witnesses.
+        //     - 3️⃣ In `zclassicd`, this is when we decrement note witnesses.
         // - For each block in the new chain, from the fork point to its tip:
         //   - For each transaction that became conflicted by this block:
         //     - If the transaction has decrypted outputs, or transparent inputs
@@ -304,7 +304,7 @@ void ThreadNotifyWallets(CBlockIndex *pindexLastTip)
         //       that belong to the wallet:
         //       - 7️⃣ Add or update the transaction, and mark it as dirty.
         //   - Update the wallet's view of the chain tip.
-        //     - 8️⃣ In `zcashd`, this is when we increment note witnesses.
+        //     - 8️⃣ In `zclassicd`, this is when we increment note witnesses.
         // - For each transaction in the mempool:
         //     - If the transaction has decrypted outputs, or transparent inputs
         //       that belong to the wallet:

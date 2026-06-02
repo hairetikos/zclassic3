@@ -34,7 +34,7 @@ public:
     }
 
     /**
-     * Sets the clock used by zcashd to the system clock. This is not thread-safe,
+     * Sets the clock used by zclassicd to the system clock. This is not thread-safe,
      * and must only be called in a single-threaded context such as `init`.
      */
     static void SetGlobal();
@@ -57,7 +57,7 @@ public:
     }
 
     /**
-     * Sets the clock used by zcashd to a fixed clock. This is not thread-safe
+     * Sets the clock used by zclassicd to a fixed clock. This is not thread-safe
      * and must only be called in a single-threaded context such as `init`.
      */
     static void SetGlobal();
@@ -81,7 +81,7 @@ public:
     }
 
     /**
-     * Sets the clock used by zcashd to a clock that returns the current system
+     * Sets the clock used by zclassicd to a clock that returns the current system
      * time modified by the specified offset. This is not thread-safe and must
      * only be called in a single-threaded context such as `init`.
      */

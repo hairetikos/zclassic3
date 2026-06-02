@@ -937,7 +937,7 @@ bool ContextualCheckTransaction(
             int expiredDosLevel = IsExpiredTx(tx, nHeight - 1) ? dosLevelConstricting : 0;
             return state.DoS(
                     expiredDosLevel,
-                    error("ContextualCheckTransaction(): transaction is expired. Resending when caught up with the blockchain, or manually setting the zcashd txexpirydelta parameter may help."),
+                    error("ContextualCheckTransaction(): transaction is expired. Resending when caught up with the blockchain, or manually setting the zclassicd txexpirydelta parameter may help."),
                     REJECT_INVALID, "tx-overwinter-expired");
         }
 
@@ -1142,10 +1142,10 @@ bool ContextualCheckTransaction(
 
         // Check that the consensus branch ID is unset in Sapling V4 transactions
         if (tx.nVersionGroupId == SAPLING_VERSION_GROUP_ID) {
-            // NOTE: This is an internal zcashd consistency
+            // NOTE: This is an internal zclassicd consistency
             // check; it does not correspond to a consensus rule in the
             // protocol specification, but is instead an artifact of the
-            // internal zcashd transaction representation.
+            // internal zclassicd transaction representation.
             if (tx.GetConsensusBranchId()) {
                 return state.DoS(
                     dosLevelPotentiallyRelaxing,
@@ -1171,10 +1171,10 @@ bool ContextualCheckTransaction(
             }
 
             if (!tx.GetConsensusBranchId().has_value()) {
-                // NOTE: This is an internal zcashd consistency
+                // NOTE: This is an internal zclassicd consistency
                 // check; it does not correspond to a consensus rule in the
                 // protocol specification, but is instead an artifact of the
-                // internal zcashd transaction representation.
+                // internal zclassicd transaction representation.
                 return state.DoS(
                     dosLevelPotentiallyRelaxing,
                     error("ContextualCheckTransaction(): transaction does not have consensus branch id field set"),
@@ -1227,9 +1227,9 @@ bool ContextualCheckTransaction(
         }
 
         // Check that Orchard transaction components are not present prior to
-        // NU5. NOTE: This is an internal zcashd consistency check; it does not
+        // NU5. NOTE: This is an internal zclassicd consistency check; it does not
         // correspond to a consensus rule in the protocol specification, but is
-        // instead an artifact of the internal zcashd transaction
+        // instead an artifact of the internal zclassicd transaction
         // representation.
         if (orchard_bundle.IsPresent()) {
             return state.DoS(
@@ -1239,9 +1239,9 @@ bool ContextualCheckTransaction(
         }
 
         // Check that the consensus branch ID is unset prior to NU5. NOTE: This
-        // is an internal zcashd consistency check; it does not correspond to a
+        // is an internal zclassicd consistency check; it does not correspond to a
         // consensus rule in the protocol specification, but is instead an
-        // artifact of the internal zcashd transaction representation.
+        // artifact of the internal zclassicd transaction representation.
         if (tx.GetConsensusBranchId()) {
             return state.DoS(
                 dosLevelPotentiallyRelaxing,
@@ -3353,7 +3353,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 _("The Sprout shielded value pool balance is not tracked for "
                   "some blocks in your block index. This may indicate legacy "
                   "data that predates Sprout value pool tracking. Please "
-                  "restart zcashd with -reindex."));
+                  "restart zclassicd with -reindex."));
         }
         if (!MoneyRange(pindex->nChainSproutValue.value())) {
             return state.DoS(100,
@@ -3382,7 +3382,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     // Lockbox turnstile check (§ 4.17)
     //
     // This check is a necessary consensus rule when transaction-defined lockbox
-    // disbursement is present. zcashd will never implement v6 transactions, and
+    // disbursement is present. zclassicd will never implement v6 transactions, and
     // so this check in practice is defending against a protocol specification
     // error in defining the one-time lockbox disbursement(s). It should not be
     // conditional on `chainparams.ZIP209Enabled()`.
@@ -3826,7 +3826,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             assert(MoneyRange(lockbox_supply));
 
             // `nChainTotalSupply` and `nChainTransparentValue` may be unpopulated
-            // if a parent block index entry was written by a zcashd version older
+            // if a parent block index entry was written by a zclassicd version older
             // than `TRANSPARENT_VALUE_VERSION` and so lacks `nChainSupplyDelta`.
             // This is normally a "reindex required" condition, but on regtest the
             // `-regtestallowlegacychainsupplydata` flag allows tests that load such
@@ -3856,7 +3856,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                         strprintf("%s: chain total supply does not match sum of pool balances at height %d (sprout=%d, sapling=%d, orchard=%d, lockbox=%d, transparent=%d, total=%d)", __func__,
                                   pindex->nHeight, sprout_supply, sapling_supply, orchard_supply, lockbox_supply, transparent_supply, total_supply),
                         _("The chain total supply does not match the sum of the pool balances. This indicates a fatal problem with the node's pool accounting. "
-                          "Please restart zcashd with -reindex."));
+                          "Please restart zclassicd with -reindex."));
                 }
             } else if (chainparams.RegTestAllowLegacyChainSupplyData()) {
                 LogPrintf("%s: skipping chain supply consistency check at height %d because chain supply tracking fields are missing (-regtestallowlegacychainsupplydata)\n", __func__,

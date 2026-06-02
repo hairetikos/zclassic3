@@ -188,7 +188,7 @@ std::pair<SaplingExtendedSpendingKey, HDKeyPath> SaplingExtendedSpendingKey::Leg
 
     // We use a fixed keypath scheme of m/32'/coin_type'/0x7FFFFFFF'/addressIndex'
     // This is not a "standard" path, but instead is a predictable location for
-    // legacy zcashd-derived keys that is minimally different from the UA account
+    // legacy zclassicd-derived keys that is minimally different from the UA account
     // path, while unlikely to collide with normal UA account usage.
 
     // Derive m/32'

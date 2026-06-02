@@ -76,7 +76,7 @@ bool AppInit(int argc, char* argv[])
     // Process help and version before taking care about datadir
     if (mapArgs.count("-?") || mapArgs.count("-h") ||  mapArgs.count("-help") || mapArgs.count("-version"))
     {
-        std::string strUsage = _("Zcash Daemon") + " " + _("version") + " " + FormatFullVersion() + "\n" + PrivacyInfo();
+        std::string strUsage = _("Zclassic Daemon") + " " + _("version") + " " + FormatFullVersion() + "\n" + PrivacyInfo();
 
         if (mapArgs.count("-version"))
         {
@@ -128,8 +128,8 @@ bool AppInit(int argc, char* argv[])
             return false;
         }
 
-        // Zclassic is not subject to the upstream zcashd deprecation; the node
-        // starts without requiring any deprecation-acknowledgement flag.
+        // Zclassic does not enforce the upstream Zcash end-of-life/deprecation
+        // gate; the node starts without requiring any acknowledgement flag.
 
         // Check for -testnet or -regtest parameter (Params() calls are only valid after this clause)
         try {
@@ -162,7 +162,7 @@ bool AppInit(int argc, char* argv[])
         fDaemon = GetBoolArg("-daemon", false);
         if (fDaemon)
         {
-            fprintf(stdout, "Zcash server starting\n");
+            fprintf(stdout, "Zclassic server starting\n");
 
             // Daemonize
             pid_t pid = fork();

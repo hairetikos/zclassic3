@@ -108,7 +108,7 @@ void EnsureWalletIsBackedUp(const CChainParams& params)
         throw JSONRPCError(
                 RPC_WALLET_BACKUP_REQUIRED,
                 "Error: Please acknowledge that you have backed up the wallet's emergency recovery phrase "
-                "by using zcashd-wallet-tool first."
+                "by using zclassicd-wallet-tool first."
                 );
 }
 
@@ -548,7 +548,7 @@ UniValue listaddresses(const UniValue& params, bool fHelp)
             "and addresses derived from the wallet's mnemonic seed for releases \n"
             "version 4.7.0 and above. \n"
             "\nREMINDER: It is recommended that you back up your wallet.dat file \n"
-            "regularly. If your wallet was created using zcashd version 4.7.0 \n"
+            "regularly. If your wallet was created using zclassicd version 4.7.0 \n"
             "or later and you have not imported externally produced keys, it only \n"
             "necessary to have backed up the wallet's emergency recovery phrase.\n"
             "\nResult:\n"
@@ -2109,7 +2109,7 @@ UniValue walletpassphrase(const UniValue& params, bool fHelp)
             "\nStores the wallet decryption key in memory for 'timeout' seconds.\n"
             "If the wallet is locked, this API must be invoked prior to performing operations\n"
             "that require the availability of private keys, such as sending Zcash.\n"
-            "zcashd wallet encryption is experimental, and should be used with caution.\n"
+            "zclassicd wallet encryption is experimental, and should be used with caution.\n"
             "\nArguments:\n"
             "1. \"passphrase\"     (string, required) The wallet passphrase\n"
             "2. timeout            (numeric, required) The time to keep the decryption key in seconds.\n"
@@ -2216,11 +2216,11 @@ UniValue walletconfirmbackup(const UniValue& params, bool fHelp)
         throw runtime_error(
             "walletconfirmbackup \"emergency recovery phrase\"\n"
             "\nCAUTION: This is an internal method that is not intended to be called directly by\n"
-            "users. Please use the zcashd-wallet-tool utility (built or installed in the same directory\n"
-            "as zcashd) instead. In particular, this method should not be used from zcash-cli, in order\n"
+            "users. Please use the zclassicd-wallet-tool utility (built or installed in the same directory\n"
+            "as zclassicd) instead. In particular, this method should not be used from zclassic-cli, in order\n"
             "to avoid exposing the recovery phrase on the command line.\n\n"
             "Notify the wallet that the user has backed up the emergency recovery phrase,\n"
-            "which can be obtained by making a call to z_exportwallet. The zcashd embedded wallet\n"
+            "which can be obtained by making a call to z_exportwallet. The zclassicd embedded wallet\n"
             "requires confirmation that the emergency recovery phrase has been backed up before it\n"
             "will permit new spending keys or addresses to be generated.\n"
             "\nArguments:\n"

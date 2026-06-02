@@ -148,7 +148,7 @@ public:
         READWRITE(type);
 
         // The implicit P2P network protocol inherited from Bitcoin Core has
-        // zcashd nodes sort-of ignoring unknown CInv message types in inv
+        // zclassicd nodes sort-of ignoring unknown CInv message types in inv
         // messages: they are added to the known transaction inventory, but
         // AlreadyHave returns true, so we do nothing with them. Meanwhile for
         // getdata messages, ProcessGetData ignores unknown message types

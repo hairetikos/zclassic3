@@ -377,6 +377,40 @@ strictness), and `-allowdeprecated=<feature>` still names individual features.
   window to also confirm it *produces* blocks legacy nodes accept (mining path),
   and spot-diff block hashes around the boundaries against a reference node.
 
+### Wallet / Rust-side consensus fixes (post-bring-up)
+The C++ consensus uses the correct Zclassic upgrade heights and branch IDs, but
+the Rust crypto stack (librustzcash) has its own consensus view that must also be
+made Zclassic-correct, or the *wallet* misbehaves even though block validation is
+fine:
+
+- **ZIP-212 / network params** (`src/rust/src/params.rs`): the Rust `network()`
+  mapped "main"/"test" to `consensus::Network::MainNetwork`/`TestNetwork`, baking
+  in Zcash's upgrade heights and ignoring the heights passed from C++. So the
+  Rust wallet thought Canopy activated at Zcash's height and tried to decrypt
+  Zclassic Sapling notes as ZIP-212 notes → **incoming shielded funds were
+  undetectable**. Fixed by always carrying Zclassic's heights (Canopy/NU5
+  disabled) with the correct `NetworkType`. Symptom was: a shielded receive did
+  not appear in the wallet (transparent did).
+
+- **Consensus branch ID for the Rust tx builder** (`depends/patches/` +
+  `[patch.crates-io]`): the Rust builder converts the branch ID into
+  `zcash_protocol::consensus::BranchId`, which only knows Zcash's IDs.
+  `BranchId::try_from(0x930b540d)` (Zclassic Buttercup) returned `Err` and the
+  node **aborted when signing a shielded send**. The v4 sighash embeds the branch
+  ID literally, so no Zcash ID can substitute. Fix: vendor `zcash_protocol` under
+  `depends/patched/` and repurpose the (Zclassic-unused) Canopy branch-ID constant
+  to `0x930b540d`; `try_from`/`From` then round-trip it and it parses as v4. The
+  vendor+patch is applied idempotently by `zcutil/build.sh`. Symptom was: a shielded
+  *send* panicked with "Unknown consensus branch ID" once a spendable note existed.
+  (Note: `z_sendmany` also defaults to 10 confirmations — `DEFAULT_NOTE_CONFIRMATIONS`
+  — so a freshly-received note shows in `z_listunspent` (minconf 1) before it is
+  spendable by `z_sendmany`.)
+  The long-term cleaner option is a maintained fork of the zcash Rust crates that
+  adds Zclassic's branch IDs (Bubbles `0x821a451c`, DiffAdj/Buttercup `0x930b540d`)
+  as first-class variants. `src/rust/src/history.rs` also calls
+  `BranchId::try_from` but only for the Heartwood MMR (disabled on Zclassic), so it
+  is not reached.
+
 ---
 
 ## 3. Top risk register

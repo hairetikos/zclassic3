@@ -135,3 +135,15 @@ features = ["ansi", "env-filter", "fmt", "time"]
 lto = 'thin'
 panic = 'abort'
 codegen-units = 1
+
+# Zclassic: override the upstream zcash_protocol crate with a locally-vendored,
+# patched copy that repurposes the (Zclassic-unused) Canopy consensus branch ID
+# to Zclassic's Buttercup branch ID 0x930b540d. This lets the Rust transaction
+# builder sign transactions for Zclassic's current consensus epoch.
+#
+# The vendored crate is generated under depends/patched/zcash_protocol by
+# depends/patches/apply-zcash-protocol-branchid-patch.sh, which zcutil/build.sh
+# runs automatically. If you build without build.sh, run that script first (it is
+# idempotent), or cargo will fail to find this path.
+[patch.crates-io]
+zcash_protocol = { path = "depends/patched/zcash_protocol" }

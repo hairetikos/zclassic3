@@ -105,6 +105,11 @@ fi
 
 set -x
 
+# Apply Zclassic's Rust crate patches (repurposes the Canopy consensus branch ID
+# to Zclassic's Buttercup branch ID so the Rust tx builder can sign Zclassic
+# transactions). Idempotent; must run before any cargo build, including -rebuild.
+./depends/patches/apply-zcash-protocol-branchid-patch.sh
+
 if [ "$REBUILD" = "1" ]; then
     echo "build.sh: -rebuild requested; skipping depends, clean.sh, autogen and configure."
     "$MAKE" "$@"

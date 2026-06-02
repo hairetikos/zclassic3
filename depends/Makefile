@@ -130,7 +130,7 @@ $(host_prefix)/.stamp_$(final_build_id): $(native_packages) $(packages)
 	then echo Extracting pre-vendored crates from $(CRATE_ARCHIVE)...; \
 		tar xf $(CRATE_ARCHIVE) -C $(@D); \
 	else echo Vendoring crates...; \
-		$(@D)/native/bin/cargo vendor --locked --manifest-path $(BASEDIR)/../Cargo.toml $(@D)/$(CRATE_REGISTRY); \
+		$(@D)/native/bin/cargo vendor --manifest-path $(BASEDIR)/../Cargo.toml $(@D)/$(CRATE_REGISTRY); \
 	fi
 	$(AT)touch $@
 
@@ -193,7 +193,7 @@ download-crates: native_rust
 	$(AT)rm -rf $(crates_download_dir)
 	$(AT)mkdir -p $(crates_download_dir)
 	$(AT)tar xf $(native_rust_cached) -C $(crates_download_dir)
-	$(AT)$(crates_download_dir)/native/bin/cargo vendor --locked --manifest-path $(BASEDIR)/../Cargo.toml $(crates_download_dir)/$(CRATE_REGISTRY)
+	$(AT)$(crates_download_dir)/native/bin/cargo vendor --manifest-path $(BASEDIR)/../Cargo.toml $(crates_download_dir)/$(CRATE_REGISTRY)
 	$(AT)cd $(crates_download_dir); find $(CRATE_REGISTRY) | sort | tar --no-recursion -czf $(CRATE_ARCHIVE) -T -
 	$(AT)rm -rf $(crates_download_dir)
 

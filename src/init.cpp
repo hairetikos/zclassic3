@@ -197,7 +197,7 @@ void Shutdown()
     /// for example if the data directory was found to be locked.
     /// Be sure that anything that writes files or flushes caches only does this if the respective
     /// module was initialized.
-    RenameThread("zcash-shutoff");
+    RenameThread("zclassic-shutoff");
     mempool.AddTransactionsUpdated(1);
 
     StopHTTPRPC();
@@ -338,7 +338,7 @@ std::string HelpMessage(HelpMessageMode mode)
 #endif
     }
     strUsage += HelpMessageOpt("-datadir=<dir>", _("Specify data directory (this path cannot use '~')"));
-    strUsage += HelpMessageOpt("-paramsdir=<dir>", _("Specify Zcash network parameters directory"));
+    strUsage += HelpMessageOpt("-paramsdir=<dir>", _("Specify Zclassic network parameters directory"));
     strUsage += HelpMessageOpt("-dbcache=<n>", strprintf(_("Set database cache size in megabytes (%d to %d, default: %d)"), nMinDbCache, nMaxDbCache, nDefaultDbCache));
     strUsage += HelpMessageOpt("-debuglogfile=<file>", strprintf(_("Specify location of debug log file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)"), DEFAULT_DEBUGLOGFILE));
     strUsage += HelpMessageOpt("-exportdir=<dir>", _("Specify directory to be used when exporting data"));
@@ -746,7 +746,7 @@ void ThreadStartWalletNotifier()
 
 void ThreadImport(std::vector<fs::path> vImportFiles, const CChainParams& chainparams)
 {
-    RenameThread("zcash-loadblk");
+    RenameThread("zclassic-loadblk");
     CImportingNow imp;
 
     // -reindex
@@ -991,7 +991,7 @@ void InitLogging()
         fLogTimestamps);
 
     LogPrintf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
-    LogPrintf("Zcash version %s\n", FormatFullVersion());
+    LogPrintf("Zclassic version %s\n", FormatFullVersion());
 }
 
 [[noreturn]] static void new_handler_terminate()
@@ -1436,7 +1436,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         }
         if (!addr.has_value()) {
             return InitError(strprintf(
-                _("Invalid address for -mineraddress=<addr>: Unable to parse '%s' as a Zcash address.)"),
+                _("Invalid address for -mineraddress=<addr>: Unable to parse '%s' as a Zclassic address.)"),
                 mapArgs["-mineraddress"]));
         }
         if (!std::visit(ExtractMinerAddress(consensus, height), addr.value()).has_value()) {
@@ -1461,7 +1461,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 
     // Sanity check
     if (!InitSanityCheck())
-        return InitError(_("Initialization sanity check failed. Zcash is shutting down."));
+        return InitError(_("Initialization sanity check failed. Zclassic is shutting down."));
 
     std::string strDataDir = GetDataDir().string();
 
@@ -1473,9 +1473,9 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     try {
         static boost::interprocess::file_lock lock(pathLockFile.string().c_str());
         if (!lock.try_lock())
-            return InitError(strprintf(_("Cannot obtain a lock on data directory %s. Zcash is probably already running."), strDataDir));
+            return InitError(strprintf(_("Cannot obtain a lock on data directory %s. Zclassic is probably already running."), strDataDir));
     } catch(const boost::interprocess::interprocess_exception& e) {
-        return InitError(strprintf(_("Cannot obtain a lock on data directory %s. Zcash is probably already running.") + " %s.", strDataDir, e.what()));
+        return InitError(strprintf(_("Cannot obtain a lock on data directory %s. Zclassic is probably already running.") + " %s.", strDataDir, e.what()));
     }
 
 #ifndef WIN32
@@ -1954,10 +1954,10 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 #ifdef ENABLE_MINING
  #ifndef ENABLE_WALLET
     if (GetBoolArg("-minetolocalwallet", false)) {
-        return InitError(_("Zcash was not built with wallet support. Set -minetolocalwallet=0 to use -mineraddress, or rebuild Zcash with wallet support."));
+        return InitError(_("Zclassic was not built with wallet support. Set -minetolocalwallet=0 to use -mineraddress, or rebuild Zclassic with wallet support."));
     }
     if (GetArg("-mineraddress", "").empty() && GetBoolArg("-gen", false)) {
-        return InitError(_("Zcash was not built with wallet support. Set -mineraddress, or rebuild Zcash with wallet support."));
+        return InitError(_("Zclassic was not built with wallet support. Set -mineraddress, or rebuild Zclassic with wallet support."));
     }
  #endif // !ENABLE_WALLET
 

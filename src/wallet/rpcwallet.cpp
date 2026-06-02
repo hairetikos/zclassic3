@@ -2678,7 +2678,7 @@ UniValue listunspent(const UniValue& params, bool fHelp)
             auto destStr = inputs[idx].get_str();
             CTxDestination dest = keyIO.DecodeDestination(destStr);
             if (!IsValidDestination(dest)) {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Zcash transparent address: ") + destStr);
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Zclassic transparent address: ") + destStr);
             }
             if (!destinations.insert(dest).second) {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid parameter, duplicated address: ") + destStr);
@@ -2834,7 +2834,7 @@ UniValue z_listunspent(const UniValue& params, bool fHelp)
 
             auto zaddr = keyIO.DecodePaymentAddress(o.get_str());
             if (!zaddr.has_value()) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, not a valid Zcash address: ") + o.get_str());
+                throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, not a valid Zclassic address: ") + o.get_str());
             }
 
             sourceAddrs.push_back(zaddr.value());

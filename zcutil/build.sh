@@ -20,6 +20,22 @@ gprefix() {
 gprefix READLINK readlink
 cd "$(dirname "$("$READLINK" -f "$0")")/.."
 
+# Fast incremental rebuild: `./zcutil/build.sh -rebuild [MAKEARGS...]` skips the
+# dependency build, clean.sh, autogen and configure, and just runs `make` against
+# the existing configuration. Use it after editing source when a full build would
+# waste time. Run a full build first, and again whenever build flags or configure
+# options change (so the new flags get baked into the Makefiles).
+REBUILD=0
+_rebuild_args=""
+for arg in "$@"; do
+    case "$arg" in
+        -rebuild|--rebuild) REBUILD=1 ;;
+        *) _rebuild_args="$_rebuild_args $arg" ;;
+    esac
+done
+# Re-split on whitespace; build args (e.g. -j8, V=1) never contain spaces.
+set -- $_rebuild_args
+
 # Allow user overrides to $MAKE. Typical usage for users who need it:
 #   MAKE=gmake ./zcutil/build.sh -j$(nproc)
 if [ -z "${MAKE-}" ]; then
@@ -56,8 +72,14 @@ $0 --help
   Show this help message and exit.
 
 $0 [ MAKEARGS... ]
-  Build Zcash and most of its transitive dependencies from
-  source. MAKEARGS are applied to both dependencies and Zcash itself.
+  Build Zclassic and most of its transitive dependencies from
+  source. MAKEARGS are applied to both dependencies and Zclassic itself.
+
+$0 -rebuild [ MAKEARGS... ]
+  Fast incremental rebuild: skip the dependency build, clean.sh, autogen and
+  configure, and just run 'make' against the existing configuration. Use after
+  editing source. Do a full build first (and again whenever build flags or
+  configure options change).
 
   Pass flags to ./configure using the CONFIGURE_FLAGS environment variable.
   For example, to enable coverage instrumentation (thus enabling "make cov"
@@ -82,6 +104,12 @@ EOF
 fi
 
 set -x
+
+if [ "$REBUILD" = "1" ]; then
+    echo "build.sh: -rebuild requested; skipping depends, clean.sh, autogen and configure."
+    "$MAKE" "$@"
+    exit 0
+fi
 
 eval "$MAKE" --version
 as --version

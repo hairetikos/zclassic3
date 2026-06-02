@@ -7,7 +7,7 @@ set -e
 set -x
 
 BUILD_PATH="/tmp/zcbuild"
-PACKAGE_NAME="zcash"
+PACKAGE_NAME="zclassic"
 SRC_PATH=$(pwd)
 SRC_DEB=$SRC_PATH/contrib/debian
 SRC_DOC=$SRC_PATH/doc
@@ -18,7 +18,7 @@ if [ ! -d $BUILD_PATH ]; then
     mkdir $BUILD_PATH
 fi
 
-PACKAGE_VERSION=$($SRC_PATH/src/zcashd --version | grep version | cut -d' ' -f4 | tr -d v)
+PACKAGE_VERSION=$($SRC_PATH/src/zclassicd --version | grep version | cut -d' ' -f4 | tr -d v)
 DEBVERSION=$(echo $PACKAGE_VERSION | sed 's/-beta/~beta/' | sed 's/-rc/~rc/' | sed 's/-/+/')
 BUILD_DIR="$BUILD_PATH/$PACKAGE_NAME-$PACKAGE_VERSION-amd64"
 
@@ -39,35 +39,35 @@ chmod 0755 -R $BUILD_DIR/*
 #cp $SRC_DEB/preinst $BUILD_DIR/DEBIAN
 #cp $SRC_DEB/prerm $BUILD_DIR/DEBIAN
 # Copy binaries
-cp $SRC_PATH/src/zcashd $DEB_BIN
-cp $SRC_PATH/src/zcashd-wallet-tool $DEB_BIN
-cp $SRC_PATH/src/zcash-cli $DEB_BIN
-cp $SRC_PATH/zcutil/fetch-params.sh $DEB_BIN/zcash-fetch-params
+cp $SRC_PATH/src/zclassicd $DEB_BIN
+cp $SRC_PATH/src/zclassicd-wallet-tool $DEB_BIN
+cp $SRC_PATH/src/zclassic-cli $DEB_BIN
+cp $SRC_PATH/zcutil/fetch-params.sh $DEB_BIN/zclassic-fetch-params
 # Copy docs
 cp $SRC_PATH/doc/release-notes/release-notes-1.0.0.md $DEB_DOC/changelog
 cp $SRC_DEB/changelog $DEB_DOC/changelog.Debian
 cp $SRC_DEB/copyright $DEB_DOC
 cp -r $SRC_DEB/examples $DEB_DOC
 # Copy manpages
-cp $SRC_DOC/man/zcashd.1 $DEB_MAN
-cp $SRC_DOC/man/zcashd-wallet-tool.1 $DEB_MAN
-cp $SRC_DOC/man/zcash-cli.1 $DEB_MAN
-cp $SRC_DOC/man/zcash-fetch-params.1 $DEB_MAN
+cp $SRC_DOC/man/zclassicd.1 $DEB_MAN
+cp $SRC_DOC/man/zclassicd-wallet-tool.1 $DEB_MAN
+cp $SRC_DOC/man/zclassic-cli.1 $DEB_MAN
+cp $SRC_DOC/man/zclassic-fetch-params.1 $DEB_MAN
 # Copy bash completion files
-cp $SRC_PATH/contrib/zcashd.bash-completion $DEB_CMP/zcashd
-cp $SRC_PATH/contrib/zcash-cli.bash-completion $DEB_CMP/zcash-cli
+cp $SRC_PATH/contrib/zclassicd.bash-completion $DEB_CMP/zclassicd
+cp $SRC_PATH/contrib/zclassic-cli.bash-completion $DEB_CMP/zclassic-cli
 # Gzip files
 gzip --best -n $DEB_DOC/changelog
 gzip --best -n $DEB_DOC/changelog.Debian
-gzip --best -n $DEB_MAN/zcashd.1
-gzip --best -n $DEB_MAN/zcashd-wallet-tool.1
-gzip --best -n $DEB_MAN/zcash-cli.1
-gzip --best -n $DEB_MAN/zcash-fetch-params.1
+gzip --best -n $DEB_MAN/zclassicd.1
+gzip --best -n $DEB_MAN/zclassicd-wallet-tool.1
+gzip --best -n $DEB_MAN/zclassic-cli.1
+gzip --best -n $DEB_MAN/zclassic-fetch-params.1
 
 cd $SRC_PATH/contrib
 
 # Create the control file
-dpkg-shlibdeps $DEB_BIN/zcashd $DEB_BIN/zcash-cli
+dpkg-shlibdeps $DEB_BIN/zclassicd $DEB_BIN/zclassic-cli
 dpkg-gencontrol -P$BUILD_DIR -v$DEBVERSION
 
 # Create the Debian package

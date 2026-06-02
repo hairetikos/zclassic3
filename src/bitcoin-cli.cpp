@@ -91,9 +91,9 @@ static int AppInitRPC(int argc, char* argv[])
         std::string strUsage = _("Zcash RPC client version") + " " + FormatFullVersion() + "\n" + PrivacyInfo();
         if (!mapArgs.count("-version")) {
             strUsage += "\n" + _("Usage:") + "\n" +
-                  "  zcash-cli [options] <command> [params]  " + _("Send command to Zcash") + "\n" +
-                  "  zcash-cli [options] help                " + _("List commands") + "\n" +
-                  "  zcash-cli [options] help <command>      " + _("Get help for a command") + "\n";
+                  "  zclassic-cli [options] <command> [params]  " + _("Send command to Zclassic") + "\n" +
+                  "  zclassic-cli [options] help                " + _("List commands") + "\n" +
+                  "  zclassic-cli [options] help <command>      " + _("Get help for a command") + "\n";
 
             strUsage += "\n" + HelpMessageCli();
         } else {

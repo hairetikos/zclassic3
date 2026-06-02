@@ -63,8 +63,8 @@ static const unsigned int STANDARD_NOT_MANDATORY_VERIFY_FLAGS = STANDARD_SCRIPT_
  * to coordinate any increase in the dust threshold carefully.
  *
  * More history: in Zcash the minRelayTxFee rate was 5000 zats/1000 bytes at launch,
- * changed to 1000 zats/1000 bytes in zcashd v1.0.3 and to 100 zats/1000 bytes in
- * zcashd v1.0.7-1 (#2141). The relaying problem for shielded transactions (#1969)
+ * changed to 1000 zats/1000 bytes in zclassicd v1.0.3 and to 100 zats/1000 bytes in
+ * zclassicd v1.0.7-1 (#2141). The relaying problem for shielded transactions (#1969)
  * that prompted the latter change was fixed more thoroughly by the addition of
  * `CFeeRate::GetFeeForRelay` in #4916, ensuring that a transaction paying
  * `LEGACY_DEFAULT_FEE` can always be relayed. At the same time the default fee was

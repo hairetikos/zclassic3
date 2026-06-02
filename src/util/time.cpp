@@ -18,26 +18,26 @@
 // This guards accesses to FixedClock and OffsetClock.
 RecursiveMutex cs_clock;
 
-static CClock* zcashdClock = SystemClock::Instance();
+static CClock* zclassicdClock = SystemClock::Instance();
 
 const CClock* GetNodeClock() {
-    return zcashdClock;
+    return zclassicdClock;
 }
 
 int64_t GetTime() {
-    return zcashdClock->GetTime();
+    return zclassicdClock->GetTime();
 }
 
 int64_t GetTimeMillis() {
-    return zcashdClock->GetTimeMillis();
+    return zclassicdClock->GetTimeMillis();
 }
 
 int64_t GetTimeMicros() {
-    return zcashdClock->GetTimeMicros();
+    return zclassicdClock->GetTimeMicros();
 }
 
 void SystemClock::SetGlobal() {
-    zcashdClock = SystemClock::Instance();
+    zclassicdClock = SystemClock::Instance();
 }
 
 int64_t SystemClock::GetTime() const {
@@ -56,7 +56,7 @@ int64_t SystemClock::GetTimeMicros() const {
 }
 
 void FixedClock::SetGlobal() {
-    zcashdClock = FixedClock::Instance();
+    zclassicdClock = FixedClock::Instance();
 }
 
 void FixedClock::Set(std::chrono::seconds fixedSeconds) {
@@ -80,7 +80,7 @@ int64_t FixedClock::GetTimeMicros() const {
 }
 
 void OffsetClock::SetGlobal() {
-    zcashdClock = OffsetClock::Instance();
+    zclassicdClock = OffsetClock::Instance();
 }
 
 void OffsetClock::Set(std::chrono::seconds offsetSeconds) {

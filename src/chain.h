@@ -485,7 +485,7 @@ public:
         nBits          = block.nBits;
         nNonce         = block.nNonce;
         nSolution      = block.nSolution;
-        MetricsIncrementCounter("zcashd.debug.memory.allocated_equihash_solutions");
+        MetricsIncrementCounter("zclassicd.debug.memory.allocated_equihash_solutions");
     }
 
     CDiskBlockPos GetBlockPos() const {

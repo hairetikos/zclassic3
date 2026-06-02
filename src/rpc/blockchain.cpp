@@ -509,7 +509,7 @@ UniValue getblockdeltas(const UniValue& params, bool fHelp)
 
     if (!(fExperimentalInsightExplorer || fExperimentalLightWalletd)) {
         throw JSONRPCError(RPC_MISC_ERROR, "Error: getblockdeltas is disabled. "
-            "Run './zcash-cli help getblockdeltas' for instructions on how to enable this feature.");
+            "Run './zclassic-cli help getblockdeltas' for instructions on how to enable this feature.");
     }
 
     std::string strHash = params[0].get_str();
@@ -572,7 +572,7 @@ UniValue getblockhashes(const UniValue& params, bool fHelp)
 
     if (!(fExperimentalInsightExplorer || fExperimentalLightWalletd)) {
         throw JSONRPCError(RPC_MISC_ERROR, "Error: getblockhashes is disabled. "
-            "Run './zcash-cli help getblockhashes' for instructions on how to enable this feature.");
+            "Run './zclassic-cli help getblockhashes' for instructions on how to enable this feature.");
     }
 
     unsigned int high = params[0].get_int();
@@ -1490,7 +1490,7 @@ UniValue z_getsubtreesbyindex(const UniValue& params, bool fHelp)
 
     if (!fExperimentalLightWalletd) {
         throw JSONRPCError(RPC_MISC_ERROR, "Error: z_getsubtreesbyindex is disabled. "
-            "Run './zcash-cli help z_getsubtreesbyindex' for instructions on how to enable this feature.");
+            "Run './zclassic-cli help z_getsubtreesbyindex' for instructions on how to enable this feature.");
     }
 
     auto strPool = params[0].get_str();

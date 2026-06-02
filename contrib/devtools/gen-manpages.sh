@@ -5,10 +5,10 @@ TOPDIR=${TOPDIR:-$(git rev-parse --show-toplevel)}
 SRCDIR=${SRCDIR:-$TOPDIR/src}
 MANDIR=${MANDIR:-$TOPDIR/doc/man}
 
-ZCASHD=${ZCASHD:-$SRCDIR/zcashd}
-ZCASHD_WALLET_TOOL=${ZCASHD_WALLET_TOOL:-$SRCDIR/zcashd-wallet-tool}
-ZCASHCLI=${ZCASHCLI:-$SRCDIR/zcash-cli}
-ZCASHTX=${ZCASHTX:-$SRCDIR/zcash-tx}
+ZCASHD=${ZCASHD:-$SRCDIR/zclassicd}
+ZCASHD_WALLET_TOOL=${ZCASHD_WALLET_TOOL:-$SRCDIR/zclassicd-wallet-tool}
+ZCASHCLI=${ZCASHCLI:-$SRCDIR/zclassic-cli}
+ZCASHTX=${ZCASHTX:-$SRCDIR/zclassic-tx}
 
 [ ! -x $ZCASHD ] && echo "$ZCASHD not found or not executable." && exit 1
 

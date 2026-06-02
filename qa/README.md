@@ -46,7 +46,7 @@ Run all possible tests with
     RPC_TEST="--extended" make rpc-tests
 
 You can also run the tests directly using `qa/pull-tester/rpc-tests.py` instead
-of `make`, but that won't ensure that zcashd is up-to-date with any changes.
+of `make`, but that won't ensure that zclassicd is up-to-date with any changes.
 
 By default, tests will be run in parallel. To specify how many jobs to run,
 append `--jobs=n` (default n=4).
@@ -57,9 +57,9 @@ Possible options, which apply to each individual test run:
 
 ```
   -h, --help            show this help message and exit
-  --nocleanup           Leave zcashds and test.* datadir on exit or error
-  --noshutdown          Don't stop zcashds after the test execution
-  --srcdir=SRCDIR       Source directory containing zcashd/zcash-cli
+  --nocleanup           Leave zclassicds and test.* datadir on exit or error
+  --noshutdown          Don't stop zclassicds after the test execution
+  --srcdir=SRCDIR       Source directory containing zclassicd/zclassic-cli
                         (default: ../../src)
   --tmpdir=TMPDIR       Root directory for datadirs
   --tracerpc            Print out all RPC calls as they are made
@@ -84,7 +84,7 @@ to recover with:
 
 ```bash
 rm -rf cache
-killall zcashd
+killall zclassicd
 ```
 
 Writing tests

@@ -143,7 +143,7 @@ public:
 
 /**
  * An internal-only type for unified full viewing keys that represents only the
- * set of receiver types that are supported by zcashd. This type does not
+ * set of receiver types that are supported by zclassicd. This type does not
  * support round-trip serialization to and from the UnifiedFullViewingKey type,
  * which should be used in most cases.
  */
@@ -253,7 +253,7 @@ public:
 };
 
 /**
- * The type of unified spending keys supported by zcashd.
+ * The type of unified spending keys supported by zclassicd.
  */
 class ZcashdUnifiedSpendingKey {
 private:

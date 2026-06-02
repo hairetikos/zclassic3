@@ -25,11 +25,21 @@ static const int DEPRECATION_HEIGHT = APPROX_RELEASE_HEIGHT + ACTIVATION_TO_DEPR
 static const int DEPRECATION_WARN_LIMIT = 14 * 24 * EXPECTED_BLOCKS_PER_HOUR;
 
 //! Defaults for -allowdeprecated
+//!
+//! Zclassic policy: deprecated features are ALLOWED by default, so the wallet
+//! never blocks basic user actions (e.g. getnewaddress / z_getnewaddress /
+//! z_getbalance) behind an `-allowdeprecated=<feature>` flag. The user stays in
+//! control: running with `-allowdeprecated=none` disables all of these at once
+//! (restoring upstream strictness), and individual features can still be named
+//! explicitly via `-allowdeprecated=<feature>`.
 static const std::set<std::string> DEFAULT_ALLOW_DEPRECATED{{
     // Node-level features
     "createrawtransaction",
     "signrawtransaction",
     "getnetworkhashps",
+    "gbt_oldhashes",
+    "deprecationinfo_deprecationheight",
+    "addrtype",
 
     // Wallet-level features
 #ifdef ENABLE_WALLET
@@ -37,16 +47,6 @@ static const std::set<std::string> DEFAULT_ALLOW_DEPRECATED{{
     "fundrawtransaction",
     "keypoolrefill",
     "settxfee",
-#endif
-}};
-static const std::set<std::string> DEFAULT_DENY_DEPRECATED{{
-    // Node-level features
-    "gbt_oldhashes",
-    "deprecationinfo_deprecationheight",
-    "addrtype",
-
-    // Wallet-level features
-#ifdef ENABLE_WALLET
     "getnewaddress",
     "getrawchangeaddress",
     "z_getnewaddress",
@@ -56,6 +56,11 @@ static const std::set<std::string> DEFAULT_DENY_DEPRECATED{{
     "wallettxvjoinsplit",
 #endif
 }};
+// Zclassic denies nothing by default (see DEFAULT_ALLOW_DEPRECATED above). This
+// set is kept (empty) so that `-allowdeprecated` argument validation and the
+// help text keep working, and so a feature could be moved here in future if it
+// ever needed to be disabled by default.
+static const std::set<std::string> DEFAULT_DENY_DEPRECATED{};
 
 // Flags that enable deprecated functionality.
 extern bool fEnableGbtOldHashes;

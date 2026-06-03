@@ -7857,6 +7857,12 @@ bool static ProcessMessage(const CChainParams& chainparams, CNode* pfrom, string
             UpdatePreferredDownload(pfrom, State(pfrom->GetId()));
         }
 
+        // Advertise that we understand BIP155 `addrv2` (so peers may send us, and
+        // we may relay to them, Tor v3 and other long-form addresses). Per BIP155
+        // this is sent after `version` and before `verack`. Unknown messages are
+        // ignored by legacy peers, so this is safe to send unconditionally.
+        pfrom->PushMessage("sendaddrv2");
+
         // Change version
         pfrom->PushMessage("verack");
         pfrom->ssSend.SetVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
@@ -7937,6 +7943,16 @@ bool static ProcessMessage(const CChainParams& chainparams, CNode* pfrom, string
         if (pfrom->fNetworkNode) {
             state->fCurrentlyConnected = true;
         }
+    }
+
+
+    // BIP155: the peer announces it understands `addrv2`. Record it so the
+    // address-relay code (Phase 2 gossip wiring) can send it long-form addresses
+    // (e.g. Tor v3) in the `addrv2` format. Safe to receive at any time.
+    else if (strCommand == "sendaddrv2")
+    {
+        pfrom->m_wants_addrv2 = true;
+        LogPrint("net", "received sendaddrv2 from peer=%d (will relay addrv2/Tor v3 once gossip wiring lands)\n", pfrom->id);
     }
 
 

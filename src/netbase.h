@@ -46,6 +46,15 @@ class CNetAddr
     protected:
         unsigned char ip[16]; // in network byte order
 
+        // Tor v3 onion service address, if this is one (otherwise empty). Holds
+        // the decoded onion blob: 32-byte ed25519 pubkey || 2-byte checksum ||
+        // 1-byte version (0x03) = 35 bytes. Kept separate from `ip` because a v3
+        // identifier does not fit the legacy 16-byte representation. This member
+        // is NOT serialized by the legacy (V1) SerializationOp below, so v3
+        // addresses are never written to the legacy `addr` wire format or
+        // peers.dat; full v3 (de)serialization arrives with addrv2 (BIP155).
+        std::vector<unsigned char> m_addr_onion;
+
     public:
         CNetAddr();
         CNetAddr(const struct in_addr& ipv4Addr);
@@ -76,7 +85,8 @@ class CNetAddr
         bool IsRFC4862() const; // IPv6 autoconfig (FE80::/64)
         bool IsRFC6052() const; // IPv6 well-known prefix (64:FF9B::/96)
         bool IsRFC6145() const; // IPv6 IPv4-translated address (::FFFF:0:0:0/96)
-        bool IsTor() const;
+        bool IsTor() const;       // Tor onion service (v2 OnionCat or v3)
+        bool IsTorV3() const;     // Tor v3 onion service specifically
         bool IsLocal() const;
         bool IsRoutable() const;
         bool IsValid() const;

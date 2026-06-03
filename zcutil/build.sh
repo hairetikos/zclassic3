@@ -107,7 +107,10 @@ set -x
 
 # Apply Zclassic's Rust crate patches (repurposes the Canopy consensus branch ID
 # to Zclassic's Buttercup branch ID so the Rust tx builder can sign Zclassic
-# transactions). Idempotent; must run before any cargo build, including -rebuild.
+# transactions). Idempotent (no-op via a marker once vendored); needs no cargo or
+# Rust toolchain (it fetches the exact locked crate tarball directly if needed),
+# so it is safe to run first and fail fast. Must run before any cargo build,
+# including -rebuild.
 ./depends/patches/apply-zcash-protocol-branchid-patch.sh
 
 if [ "$REBUILD" = "1" ]; then

@@ -164,12 +164,29 @@ address parses and `ToStringIP()` yields the correct 56-char `.onion`.
   given via `-addnode`/`-connect`. Self-advertisement/discovery is Phase 2.
 
 **Phase 2 — in progress.**
-- DONE: SHA3-256 (`src/crypto/sha3.{h,cpp}`, with a FIPS-202 self-test) and Tor v3
-  onion **checksum validation** in `SetSpecial` (fails open only if the SHA3
-  self-test fails, so it can never regress v3 parsing on a miscompile).
-- **Still pending for "full" v3:** addrv2/`sendaddrv2` gossip, `addrman`/`peers.dat`
-  V2 persistence, and (optionally) the clean `m_addr` unification + exact onion
-  `CSubNet` matching.
+- DONE (2a): SHA3-256 (`src/crypto/sha3.{h,cpp}`, with a FIPS-202 self-test) and
+  Tor v3 onion **checksum validation** in `SetSpecial` (fails open only if the
+  SHA3 self-test fails, so it can never regress v3 parsing on a miscompile).
+- DONE (2b): `addrv2` **negotiation** — we send `sendaddrv2` after `version`/before
+  `verack`, handle an incoming `sendaddrv2` by recording `CNode::m_wants_addrv2`,
+  and log it under `-debug=net`. Unknown messages are ignored by legacy peers, so
+  this is safe. This is the handshake substrate the gossip wiring builds on; no
+  addresses are sent/received in `addrv2` format yet.
+- **Pending (2c) — the gossip + persistence wiring (do with the build/test loop,
+  as it touches live address relay and the on-disk `peers.dat` on a running
+  mainnet node):**
+  - Isolated BIP155 (de)serialization for `CAddress` (a standalone
+    `network_id‖CompactSize(len)‖bytes‖port` writer/reader that never touches the
+    V1 `SerializationOp`), plus `CNetAddr` BIP155 get/set accessors (TORV3 = the
+    32-byte pubkey; `Set` rebuilds the 35-byte blob via the new SHA3 checksum).
+  - `addrv2` receive handler (parse → process like `addr`), and a send path that
+    emits `addrv2` (V2) to `m_wants_addrv2` peers and `addr` (V1, **skipping v3**)
+    to the rest — so v3 is never sent as an all-zero V1 address.
+  - `AddLocal()` our own v3 (now safe to advertise, via `addrv2` only) and relay
+    received v3 only to addrv2-capable peers.
+  - `addrman`/`peers.dat` **V2** (bump the version; V2-serialize entries; keep V1
+    read-compat) so learned v3 peers persist without polluting V1 `peers.dat`.
+- Optional later: clean `m_addr` unification + exact onion `CSubNet` matching.
 
 **Phase 2: P2P discovery.**
 - `addrv2`/`sendaddrv2`, per-peer negotiation and relay, V2 serialization.

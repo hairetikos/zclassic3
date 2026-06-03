@@ -46,8 +46,14 @@ bool fNameLookup = DEFAULT_NAME_LOOKUP;
 
 static const unsigned char pchIPv4[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
 
-// Need ample time for negotiation for very slow proxies such as Tor (milliseconds)
-static const int SOCKS5_RECV_TIMEOUT = 20 * 1000;
+// Need ample time for negotiation for very slow proxies such as Tor (milliseconds).
+// This also bounds how long we wait, after sending the SOCKS5 CONNECT, for Tor to
+// build the rendezvous circuit to a target onion service. Tor v3 first-connects
+// (and connects right after a service republishes its descriptor, e.g. after a
+// restart) routinely take longer than 20s, which surfaced as "Error reading proxy
+// response" and a connection that only succeeded on a later addnode retry. Tor's
+// own SocksTimeout default is 120s, so give it comparable headroom.
+static const int SOCKS5_RECV_TIMEOUT = 120 * 1000;
 
 enum Network ParseNetwork(std::string net) {
     boost::to_lower(net);

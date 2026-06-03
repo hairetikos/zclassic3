@@ -71,14 +71,20 @@ const std::string CLIENT_NAME("MagicBean");
                 "", \
                 RENDER_DEV_STRING(BOOST_PP_SUB(build, 50)))))
 
+/* Zclassic named-release suffix (e.g. "3.0.0-sigma"). It is inserted right after
+ * the numeric version in the human-readable version string (FormatFullVersion).
+ * The BIP14 P2P subversion/user-agent uses FormatVersion (numeric only) and is
+ * intentionally NOT affected, so peers still see "/MagicBean:3.0.0/". */
+#define ZCLASSIC_RELEASE_SUFFIX "sigma"
+
 #define BUILD_DESC_WITH_SUFFIX(maj, min, rev, build, suffix) \
-    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) RENDER_BUILD(build) "-" DO_STRINGIZE(suffix)
+    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) RENDER_BUILD(build) "-" ZCLASSIC_RELEASE_SUFFIX "-" DO_STRINGIZE(suffix)
 
 #define BUILD_DESC_FROM_COMMIT(maj, min, rev, build, commit) \
-    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) RENDER_BUILD(build) "-g" commit
+    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) RENDER_BUILD(build) "-" ZCLASSIC_RELEASE_SUFFIX "-g" commit
 
 #define BUILD_DESC_FROM_UNKNOWN(maj, min, rev, build) \
-    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) RENDER_BUILD(build) "-unk"
+    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) RENDER_BUILD(build) "-" ZCLASSIC_RELEASE_SUFFIX
 
 #ifndef BUILD_DESC
 #ifdef BUILD_SUFFIX

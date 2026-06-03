@@ -10,6 +10,7 @@
 
 #include "netbase.h"
 
+#include "crypto/sha3.h"
 #include "hash.h"
 #include "sync.h"
 #include "uint256.h"
@@ -632,11 +633,13 @@ bool ConnectSocketByName(CService &addr, SOCKET& hSocketRet, const char *pszDest
 void CNetAddr::Init()
 {
     memset(ip, 0, sizeof(ip));
+    m_addr_onion.clear();
 }
 
 void CNetAddr::SetIP(const CNetAddr& ipIn)
 {
     memcpy(ip, ipIn.ip, sizeof(ip));
+    m_addr_onion = ipIn.m_addr_onion;
 }
 
 void CNetAddr::SetRaw(Network network, const uint8_t *ip_in)
@@ -657,16 +660,71 @@ void CNetAddr::SetRaw(Network network, const uint8_t *ip_in)
 
 static const unsigned char pchOnionCat[] = {0xFD,0x87,0xD8,0x7E,0xEB,0x43};
 
+//! Decoded size of a legacy Tor v2 onion address (10 bytes -> 16 base32 chars).
+static const size_t ADDR_TORV2_DECODED_SIZE = 10;
+//! Decoded size of a Tor v3 onion address: 32-byte ed25519 pubkey + 2-byte
+//! checksum + 1-byte version = 35 bytes (-> 56 base32 chars).
+static const size_t ADDR_TORV3_DECODED_SIZE = 35;
+//! Trailing version byte of a Tor v3 onion address.
+static const unsigned char TORV3_VERSION_BYTE = 0x03;
+
+//! Verify the 2-byte checksum embedded in a decoded Tor v3 onion address.
+//! checksum = SHA3-256(".onion checksum" || pubkey || version)[:2].
+//! Fails open (returns true without checking) only if the SHA3-256 self-test
+//! fails, so a miscompiled build can never regress v3 parsing; Tor independently
+//! validates the checksum when we actually connect.
+static bool TorV3ChecksumValid(const std::vector<unsigned char>& decoded)
+{
+    static const bool sha3_ok = SHA3_256_SelfTest();
+    if (!sha3_ok) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            LogPrintf("warning: SHA3-256 self-test failed; skipping Tor v3 onion checksum validation\n");
+        }
+        return true;
+    }
+    SHA3_256 hasher;
+    hasher.Write(reinterpret_cast<const unsigned char*>(".onion checksum"), 15);
+    hasher.Write(decoded.data(), 32);
+    unsigned char ver = TORV3_VERSION_BYTE;
+    hasher.Write(&ver, 1);
+    unsigned char digest[SHA3_256::OUTPUT_SIZE];
+    hasher.Finalize(digest);
+    return digest[0] == decoded[32] && digest[1] == decoded[33];
+}
+
 bool CNetAddr::SetSpecial(const std::string &strName)
 {
-    if (strName.size()>6 && strName.substr(strName.size() - 6, 6) == ".onion") {
-        std::vector<unsigned char> vchAddr = DecodeBase32(strName.substr(0, strName.size() - 6).c_str());
-        if (vchAddr.size() != 16-sizeof(pchOnionCat))
+    if (strName.size() > 6 && strName.substr(strName.size() - 6, 6) == ".onion") {
+        bool invalid = false;
+        std::vector<unsigned char> vchAddr =
+            DecodeBase32(strName.substr(0, strName.size() - 6).c_str(), &invalid);
+        if (invalid)
             return false;
-        memcpy(ip, pchOnionCat, sizeof(pchOnionCat));
-        for (unsigned int i=0; i<16-sizeof(pchOnionCat); i++)
-            ip[i + sizeof(pchOnionCat)] = vchAddr[i];
-        return true;
+
+        if (vchAddr.size() == ADDR_TORV3_DECODED_SIZE && vchAddr[ADDR_TORV3_DECODED_SIZE - 1] == TORV3_VERSION_BYTE) {
+            // Tor v3 onion service. Validate the embedded checksum (SHA3-256).
+            // We store the full decoded blob (pubkey || checksum || version) so
+            // that ToStringIP() reproduces the exact .onion address.
+            if (!TorV3ChecksumValid(vchAddr))
+                return false;
+            Init();
+            m_addr_onion = vchAddr;
+            return true;
+        }
+
+        if (vchAddr.size() == ADDR_TORV2_DECODED_SIZE) {
+            // Legacy Tor v2 (OnionCat). Tor v2 was disabled by the Tor network in
+            // 2021; we still parse it for backward compatibility but it is not
+            // routable in practice.
+            Init();
+            memcpy(ip, pchOnionCat, sizeof(pchOnionCat));
+            memcpy(ip + sizeof(pchOnionCat), vchAddr.data(), ADDR_TORV2_DECODED_SIZE);
+            return true;
+        }
+
+        return false;
     }
     return false;
 }
@@ -790,9 +848,14 @@ bool CNetAddr::IsRFC4843() const
     return (GetByte(15) == 0x20 && GetByte(14) == 0x01 && GetByte(13) == 0x00 && (GetByte(12) & 0xF0) == 0x10);
 }
 
+bool CNetAddr::IsTorV3() const
+{
+    return m_addr_onion.size() == ADDR_TORV3_DECODED_SIZE;
+}
+
 bool CNetAddr::IsTor() const
 {
-    return (memcmp(ip, pchOnionCat, sizeof(pchOnionCat)) == 0);
+    return IsTorV3() || (memcmp(ip, pchOnionCat, sizeof(pchOnionCat)) == 0);
 }
 
 bool CNetAddr::IsLocal() const
@@ -817,6 +880,11 @@ bool CNetAddr::IsMulticast() const
 
 bool CNetAddr::IsValid() const
 {
+    // A Tor v3 onion address is valid iff it carries a full 32-byte ed25519 key
+    // (stored as the 35-byte decoded blob); `ip` is unused for v3.
+    if (IsTorV3())
+        return true;
+
     // Cleanup 3-byte shifted addresses caused by garbage in size field
     // of addr messages from versions before 0.2.9 checksum.
     // Two consecutive addr messages look like this:
@@ -872,6 +940,8 @@ enum Network CNetAddr::GetNetwork() const
 
 std::string CNetAddr::ToStringIP() const
 {
+    if (IsTorV3())
+        return EncodeBase32(m_addr_onion.data(), m_addr_onion.size()) + ".onion";
     if (IsTor())
         return EncodeBase32(&ip[6], 10) + ".onion";
     CService serv(*this, 0);
@@ -899,17 +969,21 @@ std::string CNetAddr::ToString() const
 
 bool operator==(const CNetAddr& a, const CNetAddr& b)
 {
-    return (memcmp(a.ip, b.ip, 16) == 0);
+    // For non-onion addresses both onion blobs are empty, so this reduces to the
+    // original 16-byte comparison.
+    return a.m_addr_onion == b.m_addr_onion && memcmp(a.ip, b.ip, 16) == 0;
 }
 
 bool operator!=(const CNetAddr& a, const CNetAddr& b)
 {
-    return (memcmp(a.ip, b.ip, 16) != 0);
+    return !(a == b);
 }
 
 bool operator<(const CNetAddr& a, const CNetAddr& b)
 {
-    return (memcmp(a.ip, b.ip, 16) < 0);
+    if (a.m_addr_onion != b.m_addr_onion)
+        return a.m_addr_onion < b.m_addr_onion;
+    return memcmp(a.ip, b.ip, 16) < 0;
 }
 
 bool CNetAddr::GetInAddr(struct in_addr* pipv4Addr) const
@@ -930,6 +1004,17 @@ bool CNetAddr::GetIn6Addr(struct in6_addr* pipv6Addr) const
 // no two connections will be attempted to addresses with the same group
 std::vector<unsigned char> CNetAddr::GetGroup() const
 {
+    // Tor v3: group by network + the leading bytes of the ed25519 pubkey, so that
+    // distinct v3 services land in different buckets (the legacy `ip`-based path
+    // below would lump all v3 addresses together because their `ip` is zero).
+    if (IsTorV3()) {
+        std::vector<unsigned char> vchRet;
+        vchRet.push_back(NET_TOR);
+        vchRet.push_back(m_addr_onion[0]);
+        vchRet.push_back(m_addr_onion[1]);
+        return vchRet;
+    }
+
     std::vector<unsigned char> vchRet;
     int nClass = NET_IPV6;
     int nStartByte = 0;
@@ -997,7 +1082,9 @@ std::vector<unsigned char> CNetAddr::GetGroup() const
 
 uint64_t CNetAddr::GetHash() const
 {
-    uint256 hash = Hash(&ip[0], &ip[16]);
+    uint256 hash = IsTorV3()
+        ? Hash(m_addr_onion.data(), m_addr_onion.data() + m_addr_onion.size())
+        : Hash(&ip[0], &ip[16]);
     uint64_t nRet;
     memcpy(&nRet, &hash, sizeof(nRet));
     return nRet;
@@ -1205,10 +1292,14 @@ bool CService::GetSockAddr(struct sockaddr* paddr, socklen_t *addrlen) const
 std::vector<unsigned char> CService::GetKey() const
 {
      std::vector<unsigned char> vKey;
-     vKey.resize(18);
-     memcpy(&vKey[0], ip, 16);
-     vKey[16] = port / 0x100;
-     vKey[17] = port & 0x0FF;
+     vKey.assign(ip, ip + 16);
+     // Include the v3 onion identity so distinct v3 services have distinct keys
+     // (their `ip` is all-zero). For non-onion addresses this appends nothing and
+     // the key is byte-identical to before (16-byte ip + 2-byte port).
+     if (!m_addr_onion.empty())
+         vKey.insert(vKey.end(), m_addr_onion.begin(), m_addr_onion.end());
+     vKey.push_back(port / 0x100);
+     vKey.push_back(port & 0x0FF);
      return vKey;
 }
 
@@ -1311,6 +1402,13 @@ CSubNet::CSubNet(const CNetAddr &addr):
 bool CSubNet::Match(const CNetAddr &addr) const
 {
     if (!valid || !addr.IsValid())
+        return false;
+    // Tor v3 onion addresses are not representable in the 16-byte `ip` used for
+    // subnet matching (their `ip` is all-zero), so never match them against an
+    // IP subnet — otherwise a broad subnet such as 0.0.0.0/0 would match every
+    // v3 peer. Exact onion matching would require comparing m_addr_onion and is
+    // deferred to the BIP155 rework (see doc/tor-v3-onion-plan.md).
+    if (addr.IsTorV3())
         return false;
     for(int x=0; x<16; ++x)
         if ((addr.ip[x] & netmask[x]) != network.ip[x])

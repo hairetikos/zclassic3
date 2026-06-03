@@ -351,6 +351,10 @@ public:
     bool fGetAddr;
     int64_t nNextAddrSend;
     int64_t nNextLocalAddrSend;
+    /** Whether the peer has sent us a `sendaddrv2` message, i.e. it understands
+     *  BIP155 `addrv2` and we may relay addresses to it in that format (required
+     *  to advertise Tor v3 addresses). See doc/tor-v3-onion-plan.md. */
+    bool m_wants_addrv2{false};
 
     /** Number of addr messages that can be processed from this peer. Start at 1 to
      *  permit self-announcement. */

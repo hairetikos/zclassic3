@@ -140,16 +140,53 @@ address parses and `ToStringIP()` yields the correct 56-char `.onion`.
 
 ## Phased rollout (how this lands as PRs)
 
-**Phase 1 (this PR): foundation + run a v3 service + connect out to v3.**
-- `CNetAddr`/`CService` representation rework with **V1-compatible** serialization
-  (IPv4/IPv6/TORv2 byte-identical; v3 omitted from legacy paths).
-- v3 `.onion` parsing (with checksum/version validation).
-- `torcontrol.cpp` `ED25519-V3` + stable key persistence.
-- SOCKS5 outbound to v3 (works via hostname).
-- v3 addresses are **not yet** put into `addrman` or gossiped, so `peers.dat`/
-  legacy `addr` are untouched — zero wire/format risk.
-- Net effect: the node can host a v3 hidden service and reach v3 peers given via
-  `-addnode`/`-connect`.
+**Phase 1 — DONE: run a v3 service + connect out to v3.**
+- `torcontrol.cpp` `ED25519-V3` + stable key persistence (`onion_v3_private_key`).
+- v3 address representation in `CNetAddr`/`CService`, implemented as a **hybrid**
+  rather than the full `m_addr` unification: `ip[16]` and all legacy IPv4/IPv6/v2
+  code paths are left **byte-for-byte untouched** (zero risk to existing
+  networking/serialization), and v3 is carried in an additive
+  `m_addr_onion` blob (the 35-byte decoded onion: pubkey‖checksum‖version). This
+  was chosen over the clean `m_addr` rework specifically because it could be
+  landed without rebuilding/retesting the serialization of every existing address
+  type. The full `m_addr` unification (uniform representation, IPv4 as 4 bytes,
+  etc.) remains the eventual cleanup and is a prerequisite tidy-up for nothing
+  functional — Phase 2 builds fine on the hybrid.
+- v3 `.onion` parsing in `SetSpecial` (length + version-byte check; **checksum
+  validation deferred** — it needs SHA3-256, which the tree does not yet bundle;
+  Tor validates the checksum on connect). v2 stays parseable (deprecated).
+- Outbound v3 works: `Lookup` → `ConnectSocket` → Tor SOCKS5 proxy using the
+  56-char `.onion` from `ToStringIP()`.
+- v3 addresses are **not** `AddLocal`'d, put into `addrman`, or gossiped: the
+  legacy `addr`/`peers.dat` (V1) paths are untouched and never emit/clobber a v3
+  address (a v3's `ip` is all-zero and `m_addr_onion` is not V1-serialized).
+- Net effect: the node hosts a v3 hidden service (inbound) and can reach v3 peers
+  given via `-addnode`/`-connect`. Self-advertisement/discovery is Phase 2.
+
+**Phase 2 — in progress.**
+- DONE (2a): SHA3-256 (`src/crypto/sha3.{h,cpp}`, with a FIPS-202 self-test) and
+  Tor v3 onion **checksum validation** in `SetSpecial` (fails open only if the
+  SHA3 self-test fails, so it can never regress v3 parsing on a miscompile).
+- DONE (2b): `addrv2` **negotiation** — we send `sendaddrv2` after `version`/before
+  `verack`, handle an incoming `sendaddrv2` by recording `CNode::m_wants_addrv2`,
+  and log it under `-debug=net`. Unknown messages are ignored by legacy peers, so
+  this is safe. This is the handshake substrate the gossip wiring builds on; no
+  addresses are sent/received in `addrv2` format yet.
+- **Pending (2c) — the gossip + persistence wiring (do with the build/test loop,
+  as it touches live address relay and the on-disk `peers.dat` on a running
+  mainnet node):**
+  - Isolated BIP155 (de)serialization for `CAddress` (a standalone
+    `network_id‖CompactSize(len)‖bytes‖port` writer/reader that never touches the
+    V1 `SerializationOp`), plus `CNetAddr` BIP155 get/set accessors (TORV3 = the
+    32-byte pubkey; `Set` rebuilds the 35-byte blob via the new SHA3 checksum).
+  - `addrv2` receive handler (parse → process like `addr`), and a send path that
+    emits `addrv2` (V2) to `m_wants_addrv2` peers and `addr` (V1, **skipping v3**)
+    to the rest — so v3 is never sent as an all-zero V1 address.
+  - `AddLocal()` our own v3 (now safe to advertise, via `addrv2` only) and relay
+    received v3 only to addrv2-capable peers.
+  - `addrman`/`peers.dat` **V2** (bump the version; V2-serialize entries; keep V1
+    read-compat) so learned v3 peers persist without polluting V1 `peers.dat`.
+- Optional later: clean `m_addr` unification + exact onion `CSubNet` matching.
 
 **Phase 2: P2P discovery.**
 - `addrv2`/`sendaddrv2`, per-peer negotiation and relay, V2 serialization.

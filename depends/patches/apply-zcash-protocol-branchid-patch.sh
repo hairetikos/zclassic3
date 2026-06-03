@@ -55,29 +55,66 @@ find_src() {
     ls -d "$CARGO_HOME_DIR"/registry/src/*/zcash_protocol-0.7.* 2>/dev/null | sort -V | tail -1
 }
 
-SRC=$(find_src || true)
+# Download the exact pinned crate tarball straight from the crates.io static CDN
+# and extract it. This deliberately avoids `cargo fetch`/dependency resolution:
+# zcash_protocol 0.7's transitive deps include versions that have since been
+# yanked (e.g. core2 0.3.x), so a fresh resolve fails even though the workspace
+# (which uses Cargo.lock) builds fine. The .crate file is just a gzipped tar of
+# the crate source, so this needs no cargo or Rust toolchain at all.
+# Sets DL_SRC to the extracted crate dir on success.
+download_crate() {
+    DL_SRC=""
+    if [ -z "$VER" ]; then
+        return 1
+    fi
+    dl=""
+    if command -v curl >/dev/null 2>&1; then
+        dl="curl -sSL -o"
+    elif command -v wget >/dev/null 2>&1; then
+        dl="wget -qO"
+    else
+        echo "ERROR: neither curl nor wget is available to download the crate." >&2
+        return 1
+    fi
+    DL_TMP=$(mktemp -d)
+    crate_file="$DL_TMP/zcash_protocol-$VER.crate"
+    url="https://static.crates.io/crates/zcash_protocol/zcash_protocol-$VER.crate"
+    echo "Downloading zcash_protocol $VER from crates.io ..."
+    if ! $dl "$crate_file" "$url"; then
+        echo "ERROR: failed to download $url" >&2
+        rm -rf "$DL_TMP"
+        return 1
+    fi
+    if ! tar xzf "$crate_file" -C "$DL_TMP"; then
+        echo "ERROR: failed to extract $crate_file" >&2
+        rm -rf "$DL_TMP"
+        return 1
+    fi
+    if [ ! -d "$DL_TMP/zcash_protocol-$VER" ]; then
+        echo "ERROR: extracted archive did not contain zcash_protocol-$VER/" >&2
+        rm -rf "$DL_TMP"
+        return 1
+    fi
+    DL_SRC="$DL_TMP/zcash_protocol-$VER"
+    return 0
+}
 
+# Prefer the cargo cache if it is already populated (fast, offline); otherwise
+# download the pinned tarball directly.
+SRC=$(find_src || true)
+DL_TMP=""
 if [ -z "${SRC:-}" ] || [ ! -d "${SRC:-/nonexistent}" ]; then
-    # Not in the cache yet (e.g. a completely fresh checkout). Populate it via a
-    # throwaway project so we don't depend on the main Cargo.toml (which already
-    # references this not-yet-created patch path).
-    echo "zcash_protocol source not found in cargo cache; fetching it..."
-    TMP=$(mktemp -d)
-    (
-        cd "$TMP"
-        cargo new --quiet --lib zclfetch >/dev/null 2>&1 || true
-        cd zclfetch
-        printf 'zcash_protocol = "0.7"\n' >> Cargo.toml
-        cargo fetch --quiet >/dev/null 2>&1 || true
-    ) || true
-    rm -rf "$TMP"
-    SRC=$(find_src || true)
+    echo "zcash_protocol source not in cargo cache; fetching it directly."
+    if download_crate; then
+        SRC="$DL_SRC"
+    fi
 fi
 
 if [ -z "${SRC:-}" ] || [ ! -d "${SRC:-/nonexistent}" ]; then
-    echo "ERROR: could not locate the zcash_protocol crate source." >&2
-    echo "Run 'cargo fetch' once (with the [patch] line temporarily removed from" >&2
-    echo "Cargo.toml if needed) to populate ~/.cargo, then re-run this script." >&2
+    echo "ERROR: could not obtain the zcash_protocol crate source." >&2
+    echo "Ensure curl or wget and network access to crates.io are available, or" >&2
+    echo "run 'cargo fetch' once to populate ~/.cargo, then re-run this script." >&2
+    [ -n "$DL_TMP" ] && rm -rf "$DL_TMP"
     exit 1
 fi
 
@@ -85,6 +122,8 @@ echo "Vendoring zcash_protocol from: $SRC"
 rm -rf "$DEST"
 mkdir -p "$(dirname "$DEST")"
 cp -a "$SRC" "$DEST"
+# Clean up a temporary download dir, if we used one (DEST now has its own copy).
+[ -n "$DL_TMP" ] && rm -rf "$DL_TMP"
 # Registry sources are read-only; make the copy writable so we can patch it.
 chmod -R u+w "$DEST"
 # Registry checksum file is meaningless for a path patch and we are modifying the

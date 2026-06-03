@@ -5596,6 +5596,15 @@ static bool CheckBlockMerkleRoot(const CBlock& block, bool* mutated)
     return !*mutated && computedRoot == block.hashMerkleRoot;
 }
 
+// Generous upper bound used for block *acceptance* (CheckBlock) and for reading
+// blocks back from local block files (LoadExternalBlockFile), as opposed to the
+// standard MAX_BLOCK_SIZE (200000) used for mining. The historical Zclassic
+// chain contains blocks larger than MAX_BLOCK_SIZE (chain variations / forks),
+// which must still validate and load when syncing from genesis; the checkpoints
+// prove the historical chain's correctness, so we only bound the size here
+// defensively. Mirrors the Zclassic reference's GENEROUS_BLOCK_SIZE_LIMIT.
+static const unsigned int GENEROUS_BLOCK_SIZE_LIMIT = 2000000; // 2MB
+
 bool CheckBlock(const CBlock& block,
                 CValidationState& state,
                 const CChainParams& chainparams,
@@ -5632,8 +5641,10 @@ bool CheckBlock(const CBlock& block,
     // transaction validation, as otherwise we may mark the header as invalid
     // because we receive the wrong transactions for it.
 
-    // Size limits
-    if (block.vtx.empty() || block.vtx.size() > MAX_BLOCK_SIZE || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
+    // Size limits (see GENEROUS_BLOCK_SIZE_LIMIT above): block acceptance uses
+    // the generous 2MB bound, not MAX_BLOCK_SIZE, so historical over-standard
+    // blocks validate when syncing from genesis.
+    if (block.vtx.empty() || block.vtx.size() > GENEROUS_BLOCK_SIZE_LIMIT || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION) > GENEROUS_BLOCK_SIZE_LIMIT)
         return state.DoS(100, error("CheckBlock(): size limits failed"),
                          REJECT_INVALID, "bad-blk-length");
 
@@ -7140,8 +7151,10 @@ bool LoadExternalBlockFile(const CChainParams& chainparams, FILE* fileIn, CDiskB
 
     int nLoaded = 0;
     try {
-        // This takes over fileIn and calls fclose() on it in the CBufferedFile destructor
-        CBufferedFile blkdat(fileIn, 2*MAX_BLOCK_SIZE, MAX_BLOCK_SIZE+8, SER_DISK, CLIENT_VERSION);
+        // This takes over fileIn and calls fclose() on it in the CBufferedFile destructor.
+        // Size the buffer/rewind for the generous block limit (not MAX_BLOCK_SIZE) so
+        // historical over-standard blocks can be read back during -reindex/-loadblock.
+        CBufferedFile blkdat(fileIn, 2*GENEROUS_BLOCK_SIZE_LIMIT, GENEROUS_BLOCK_SIZE_LIMIT+8, SER_DISK, CLIENT_VERSION);
         uint64_t nRewind = blkdat.GetPos();
         size_t initialSize = nSizeReindexed;
         while (!blkdat.eof()) {
@@ -7164,7 +7177,7 @@ bool LoadExternalBlockFile(const CChainParams& chainparams, FILE* fileIn, CDiskB
                     continue;
                 // read size
                 blkdat >> nSize;
-                if (nSize < 80 || nSize > MAX_BLOCK_SIZE)
+                if (nSize < 80 || nSize > GENEROUS_BLOCK_SIZE_LIMIT)
                     continue;
             } catch (const std::exception&) {
                 // no valid block header found; don't complain

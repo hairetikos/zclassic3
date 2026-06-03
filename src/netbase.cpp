@@ -10,6 +10,7 @@
 
 #include "netbase.h"
 
+#include "crypto/sha3.h"
 #include "hash.h"
 #include "sync.h"
 #include "uint256.h"
@@ -667,6 +668,32 @@ static const size_t ADDR_TORV3_DECODED_SIZE = 35;
 //! Trailing version byte of a Tor v3 onion address.
 static const unsigned char TORV3_VERSION_BYTE = 0x03;
 
+//! Verify the 2-byte checksum embedded in a decoded Tor v3 onion address.
+//! checksum = SHA3-256(".onion checksum" || pubkey || version)[:2].
+//! Fails open (returns true without checking) only if the SHA3-256 self-test
+//! fails, so a miscompiled build can never regress v3 parsing; Tor independently
+//! validates the checksum when we actually connect.
+static bool TorV3ChecksumValid(const std::vector<unsigned char>& decoded)
+{
+    static const bool sha3_ok = SHA3_256_SelfTest();
+    if (!sha3_ok) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            LogPrintf("warning: SHA3-256 self-test failed; skipping Tor v3 onion checksum validation\n");
+        }
+        return true;
+    }
+    SHA3_256 hasher;
+    hasher.Write(reinterpret_cast<const unsigned char*>(".onion checksum"), 15);
+    hasher.Write(decoded.data(), 32);
+    unsigned char ver = TORV3_VERSION_BYTE;
+    hasher.Write(&ver, 1);
+    unsigned char digest[SHA3_256::OUTPUT_SIZE];
+    hasher.Finalize(digest);
+    return digest[0] == decoded[32] && digest[1] == decoded[33];
+}
+
 bool CNetAddr::SetSpecial(const std::string &strName)
 {
     if (strName.size() > 6 && strName.substr(strName.size() - 6, 6) == ".onion") {
@@ -677,12 +704,11 @@ bool CNetAddr::SetSpecial(const std::string &strName)
             return false;
 
         if (vchAddr.size() == ADDR_TORV3_DECODED_SIZE && vchAddr[ADDR_TORV3_DECODED_SIZE - 1] == TORV3_VERSION_BYTE) {
-            // Tor v3 onion service. The 2-byte checksum is validated by Tor when
-            // we connect; we skip re-validating it here because that requires
-            // SHA3-256, which this codebase does not yet bundle (see
-            // doc/tor-v3-onion-plan.md). We store the full decoded blob so that
-            // ToStringIP() reproduces the exact .onion address without needing to
-            // recompute the checksum.
+            // Tor v3 onion service. Validate the embedded checksum (SHA3-256).
+            // We store the full decoded blob (pubkey || checksum || version) so
+            // that ToStringIP() reproduces the exact .onion address.
+            if (!TorV3ChecksumValid(vchAddr))
+                return false;
             Init();
             m_addr_onion = vchAddr;
             return true;

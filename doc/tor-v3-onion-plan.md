@@ -163,9 +163,13 @@ address parses and `ToStringIP()` yields the correct 56-char `.onion`.
 - Net effect: the node hosts a v3 hidden service (inbound) and can reach v3 peers
   given via `-addnode`/`-connect`. Self-advertisement/discovery is Phase 2.
 
-**Still pending for "full" v3 (Phase 2):** SHA3-256 + v3 checksum validation,
-addrv2/`sendaddrv2` gossip, `addrman`/`peers.dat` V2 persistence, and (optionally)
-the clean `m_addr` unification + exact onion `CSubNet` matching.
+**Phase 2 — in progress.**
+- DONE: SHA3-256 (`src/crypto/sha3.{h,cpp}`, with a FIPS-202 self-test) and Tor v3
+  onion **checksum validation** in `SetSpecial` (fails open only if the SHA3
+  self-test fails, so it can never regress v3 parsing on a miscompile).
+- **Still pending for "full" v3:** addrv2/`sendaddrv2` gossip, `addrman`/`peers.dat`
+  V2 persistence, and (optionally) the clean `m_addr` unification + exact onion
+  `CSubNet` matching.
 
 **Phase 2: P2P discovery.**
 - `addrv2`/`sendaddrv2`, per-peer negotiation and relay, V2 serialization.

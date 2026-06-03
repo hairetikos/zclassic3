@@ -504,14 +504,29 @@ void TorController::add_onion_cb(TorControlConnection& _conn, const TorControlRe
             return;
         }
 
-        service = CService(service_id+".onion", GetListenPort(), false);
-        LogPrintf("tor: Got service ID %s, advertizing service %s\n", service_id, service.ToString());
+        const std::string onion_address = service_id + ".onion";
+        service = CService(onion_address, GetListenPort(), false);
+        if (service.IsValid()) {
+            // Legacy path (e.g. a v2 service id): representable by the current
+            // CNetAddr, so advertise it as before.
+            LogPrintf("tor: Got service ID %s, advertising service %s\n", service_id, service.ToString());
+            AddLocal(service, LOCAL_MANUAL);
+        } else {
+            // Tor v3 onion service ids (56 chars, a 32-byte ed25519 key) cannot
+            // yet be represented by CNetAddr/CService on this pre-BIP155 codebase.
+            // The hidden service has been created in Tor and is reachable for
+            // *inbound* connections at the address below; local advertisement and
+            // P2P gossip of the v3 address await the address-representation rework
+            // (see doc/tor-v3-onion-plan.md, Phase 2).
+            LogPrintf("tor: Created Tor v3 hidden service, reachable at %s:%i. "
+                      "(Local advertisement / peer gossip of v3 addresses is not yet enabled.)\n",
+                      onion_address, GetListenPort());
+        }
         if (WriteBinaryFile(GetPrivateKeyFile(), private_key)) {
             LogPrint("tor", "tor: Cached service private key to %s\n", GetPrivateKeyFile().string());
         } else {
             LogPrintf("tor: Error writing service private key to %s\n", GetPrivateKeyFile().string());
         }
-        AddLocal(service, LOCAL_MANUAL);
         // ... onion requested - keep connection open
     } else if (reply.code == 510) { // 510 Unrecognized command
         LogPrintf("tor: Add onion failed with unrecognized command (You probably need to upgrade Tor)\n");
@@ -534,8 +549,12 @@ void TorController::auth_cb(TorControlConnection& _conn, const TorControlReply& 
         }
 
         // Finally - now create the service
-        if (private_key.empty()) // No private key, generate one
-            private_key = "NEW:RSA1024"; // Explicitly request RSA1024 - see issue #9214
+        if (private_key.empty()) { // No private key, generate one
+            // Request a Tor v3 (ED25519) onion service. Tor v2 (RSA1024) onion
+            // services were deprecated and disabled by the Tor network in 2021,
+            // so we no longer request them. Requires Tor >= 0.3.3.x.
+            private_key = "NEW:ED25519-V3";
+        }
         // Request hidden service, redirect port.
         // Note that the 'virtual' port doesn't have to be the same as our internal port, but this is just a convenient
         // choice.  TODO; refactor the shutdown sequence some day.
@@ -721,7 +740,10 @@ void TorController::Reconnect()
 
 fs::path TorController::GetPrivateKeyFile()
 {
-    return GetDataDir() / "onion_private_key";
+    // Distinct from the legacy v2 "onion_private_key" file: a saved v2 (RSA1024)
+    // key must not be handed to a v3 ADD_ONION request (which would fail), and we
+    // want a stable v3 .onion address across restarts.
+    return GetDataDir() / "onion_v3_private_key";
 }
 
 void TorController::reconnect_cb(evutil_socket_t fd, short what, void *arg)

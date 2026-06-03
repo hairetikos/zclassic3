@@ -140,16 +140,32 @@ address parses and `ToStringIP()` yields the correct 56-char `.onion`.
 
 ## Phased rollout (how this lands as PRs)
 
-**Phase 1 (this PR): foundation + run a v3 service + connect out to v3.**
-- `CNetAddr`/`CService` representation rework with **V1-compatible** serialization
-  (IPv4/IPv6/TORv2 byte-identical; v3 omitted from legacy paths).
-- v3 `.onion` parsing (with checksum/version validation).
-- `torcontrol.cpp` `ED25519-V3` + stable key persistence.
-- SOCKS5 outbound to v3 (works via hostname).
-- v3 addresses are **not yet** put into `addrman` or gossiped, so `peers.dat`/
-  legacy `addr` are untouched — zero wire/format risk.
-- Net effect: the node can host a v3 hidden service and reach v3 peers given via
-  `-addnode`/`-connect`.
+**Phase 1 — DONE: run a v3 service + connect out to v3.**
+- `torcontrol.cpp` `ED25519-V3` + stable key persistence (`onion_v3_private_key`).
+- v3 address representation in `CNetAddr`/`CService`, implemented as a **hybrid**
+  rather than the full `m_addr` unification: `ip[16]` and all legacy IPv4/IPv6/v2
+  code paths are left **byte-for-byte untouched** (zero risk to existing
+  networking/serialization), and v3 is carried in an additive
+  `m_addr_onion` blob (the 35-byte decoded onion: pubkey‖checksum‖version). This
+  was chosen over the clean `m_addr` rework specifically because it could be
+  landed without rebuilding/retesting the serialization of every existing address
+  type. The full `m_addr` unification (uniform representation, IPv4 as 4 bytes,
+  etc.) remains the eventual cleanup and is a prerequisite tidy-up for nothing
+  functional — Phase 2 builds fine on the hybrid.
+- v3 `.onion` parsing in `SetSpecial` (length + version-byte check; **checksum
+  validation deferred** — it needs SHA3-256, which the tree does not yet bundle;
+  Tor validates the checksum on connect). v2 stays parseable (deprecated).
+- Outbound v3 works: `Lookup` → `ConnectSocket` → Tor SOCKS5 proxy using the
+  56-char `.onion` from `ToStringIP()`.
+- v3 addresses are **not** `AddLocal`'d, put into `addrman`, or gossiped: the
+  legacy `addr`/`peers.dat` (V1) paths are untouched and never emit/clobber a v3
+  address (a v3's `ip` is all-zero and `m_addr_onion` is not V1-serialized).
+- Net effect: the node hosts a v3 hidden service (inbound) and can reach v3 peers
+  given via `-addnode`/`-connect`. Self-advertisement/discovery is Phase 2.
+
+**Still pending for "full" v3 (Phase 2):** SHA3-256 + v3 checksum validation,
+addrv2/`sendaddrv2` gossip, `addrman`/`peers.dat` V2 persistence, and (optionally)
+the clean `m_addr` unification + exact onion `CSubNet` matching.
 
 **Phase 2: P2P discovery.**
 - `addrv2`/`sendaddrv2`, per-peer negotiation and relay, V2 serialization.

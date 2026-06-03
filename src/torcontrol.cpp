@@ -506,21 +506,22 @@ void TorController::add_onion_cb(TorControlConnection& _conn, const TorControlRe
 
         const std::string onion_address = service_id + ".onion";
         service = CService(onion_address, GetListenPort(), false);
-        if (service.IsValid()) {
-            // Legacy path (e.g. a v2 service id): representable by the current
-            // CNetAddr, so advertise it as before.
+        if (service.IsTorV3()) {
+            // The v3 hidden service is created in Tor and reachable for inbound
+            // connections at this address. We deliberately do NOT AddLocal() it
+            // yet: a v3 address has no legacy (V1) representation, so advertising
+            // it over the current `addr` gossip would emit an unroutable all-zero
+            // address. Self-advertisement of our v3 address over the P2P network
+            // requires addrv2 (see doc/tor-v3-onion-plan.md, Phase 2).
+            LogPrintf("tor: Created Tor v3 hidden service, reachable at %s:%i. "
+                      "(P2P gossip of our v3 address requires addrv2; not yet enabled.)\n",
+                      onion_address, GetListenPort());
+        } else if (service.IsValid()) {
+            // Legacy (v2) service id, representable by the current CNetAddr.
             LogPrintf("tor: Got service ID %s, advertising service %s\n", service_id, service.ToString());
             AddLocal(service, LOCAL_MANUAL);
         } else {
-            // Tor v3 onion service ids (56 chars, a 32-byte ed25519 key) cannot
-            // yet be represented by CNetAddr/CService on this pre-BIP155 codebase.
-            // The hidden service has been created in Tor and is reachable for
-            // *inbound* connections at the address below; local advertisement and
-            // P2P gossip of the v3 address await the address-representation rework
-            // (see doc/tor-v3-onion-plan.md, Phase 2).
-            LogPrintf("tor: Created Tor v3 hidden service, reachable at %s:%i. "
-                      "(Local advertisement / peer gossip of v3 addresses is not yet enabled.)\n",
-                      onion_address, GetListenPort());
+            LogPrintf("tor: Got service ID %s but could not parse it as an onion address\n", service_id);
         }
         if (WriteBinaryFile(GetPrivateKeyFile(), private_key)) {
             LogPrint("tor", "tor: Cached service private key to %s\n", GetPrivateKeyFile().string());

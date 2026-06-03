@@ -7952,7 +7952,7 @@ bool static ProcessMessage(const CChainParams& chainparams, CNode* pfrom, string
     else if (strCommand == "sendaddrv2")
     {
         pfrom->m_wants_addrv2 = true;
-        LogPrint("net", "received sendaddrv2 from peer=%d (will relay addrv2/Tor v3 once gossip wiring lands)\n", pfrom->id);
+        LogPrint("net", "received sendaddrv2 from peer=%d (will relay addresses, including Tor v3, via addrv2)\n", pfrom->id);
     }
 
 
@@ -7976,10 +7976,14 @@ bool static ProcessMessage(const CChainParams& chainparams, CNode* pfrom, string
     }
 
 
-    else if (strCommand == "addr")
+    else if (strCommand == "addr" || strCommand == "addrv2")
     {
+        bool fAddrV2 = (strCommand == "addrv2");
         vector<CAddress> vAddr;
-        vRecv >> vAddr;
+        if (fAddrV2)
+            UnserializeAddrV2(vRecv, vAddr);
+        else
+            vRecv >> vAddr;
 
         // Don't want addr from older versions unless seeding
         if (pfrom->nVersion < CADDR_TIME_VERSION && addrman.size() > 1000)
@@ -7988,7 +7992,7 @@ bool static ProcessMessage(const CChainParams& chainparams, CNode* pfrom, string
         {
             LOCK(cs_main);
             Misbehaving(pfrom->GetId(), 20);
-            return error("message addr size() = %u", vAddr.size());
+            return error("message %s size() = %u", strCommand, vAddr.size());
         }
 
         // Store the new addresses
@@ -8053,13 +8057,19 @@ bool static ProcessMessage(const CChainParams& chainparams, CNode* pfrom, string
                         ((*mi).second)->PushAddress(addr, insecure_rand);
                 }
             }
-            // Do not store addresses outside our network
-            if (fReachable)
+            // Do not store addresses outside our network.
+            // Tor v3 is relayed live (above) but deliberately not added to
+            // addrman: addrman persists to peers.dat via the legacy V1 encoding,
+            // which has no representation for v3 and would write an all-zero
+            // entry. (Persistent v3 storage is deferred; see Phase 2c notes in
+            // doc/tor-v3-onion-plan.md.)
+            if (fReachable && !addr.IsTorV3())
                 vAddrOk.push_back(addr);
         }
         pfrom->m_addr_processed += num_proc;
         pfrom->m_addr_rate_limited += num_rate_limit;
-        LogPrintf("ProcessMessage: Received addr: %u addresses (%u processed, %u rate-limited) from peer=%d%s\n",
+        LogPrintf("ProcessMessage: Received %s: %u addresses (%u processed, %u rate-limited) from peer=%d%s\n",
+                 strCommand,
                  vAddr.size(),
                  num_proc,
                  num_rate_limit,
@@ -8896,24 +8906,38 @@ bool SendMessages(const Consensus::Params& params, CNode* pto)
         //
         if (pto->nNextAddrSend < nNow) {
             pto->nNextAddrSend = PoissonNextSend(nNow, AVG_ADDRESS_BROADCAST_INTERVAL);
+            // Peers that negotiated `sendaddrv2` receive addresses as `addrv2`
+            // (BIP155), which can carry Tor v3. Legacy peers receive `addr`
+            // (V1), which cannot represent v3 — so v3 addresses are skipped for
+            // them rather than emitted as an all-zero address.
+            const bool fSendV2 = pto->m_wants_addrv2;
             vector<CAddress> vAddr;
             vAddr.reserve(pto->vAddrToSend.size());
             for (const CAddress& addr : pto->vAddrToSend)
             {
+                if (!fSendV2 && addr.IsTorV3())
+                    continue;
                 if (pto->AddAddressIfNotAlreadyKnown(addr))
                 {
                     vAddr.push_back(addr);
-                    // receiver rejects addr messages larger than 1000
+                    // receiver rejects addr/addrv2 messages larger than 1000
                     if (vAddr.size() >= 1000)
                     {
-                        pto->PushMessage("addr", vAddr);
+                        if (fSendV2)
+                            pto->PushMessage("addrv2", CAddrV2Writer(vAddr));
+                        else
+                            pto->PushMessage("addr", vAddr);
                         vAddr.clear();
                     }
                 }
             }
             pto->vAddrToSend.clear();
-            if (!vAddr.empty())
-                pto->PushMessage("addr", vAddr);
+            if (!vAddr.empty()) {
+                if (fSendV2)
+                    pto->PushMessage("addrv2", CAddrV2Writer(vAddr));
+                else
+                    pto->PushMessage("addr", vAddr);
+            }
         }
 
         CNodeState &state = *State(pto->GetId());

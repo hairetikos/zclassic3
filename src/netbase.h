@@ -40,6 +40,18 @@ enum Network
     NET_MAX,
 };
 
+//! BIP155 network identifiers, used by the `addrv2` P2P message. Only
+//! IPV4/IPV6/TORV3 are produced or consumed here; the others are recognised so
+//! that unknown-but-well-formed entries can be skipped without desync.
+enum BIP155Network : uint8_t {
+    BIP155_IPV4  = 1,
+    BIP155_IPV6  = 2,
+    BIP155_TORV2 = 3,
+    BIP155_TORV3 = 4,
+    BIP155_I2P   = 5,
+    BIP155_CJDNS = 6,
+};
+
 /** IP address (IPv6, or IPv4 using mapped IPv6 range (::FFFF:0:0/96)) */
 class CNetAddr
 {
@@ -87,6 +99,19 @@ class CNetAddr
         bool IsRFC6145() const; // IPv6 IPv4-translated address (::FFFF:0:0:0/96)
         bool IsTor() const;       // Tor onion service (v2 OnionCat or v3)
         bool IsTorV3() const;     // Tor v3 onion service specifically
+
+        //! BIP155 network id for `addrv2`, or 0 if not representable there
+        //! (e.g. legacy Tor v2).
+        uint8_t GetBIP155Network() const;
+        //! Raw address bytes as encoded in `addrv2` (4 / 16 / 32 bytes).
+        std::vector<unsigned char> GetAddrV2Bytes() const;
+        //! Reconstruct from a BIP155 network id + raw bytes (addrv2 receive).
+        //! Returns false for unsupported/unknown networks or bad lengths.
+        bool SetBIP155(uint8_t bip155_network, const std::vector<unsigned char>& bytes);
+        //! Build a Tor v3 address from its 32-byte ed25519 pubkey (computes the
+        //! SHA3-256 checksum and stores the 35-byte decoded blob).
+        bool SetTorV3FromPubkey(const unsigned char pubkey[32]);
+
         bool IsLocal() const;
         bool IsRoutable() const;
         bool IsValid() const;

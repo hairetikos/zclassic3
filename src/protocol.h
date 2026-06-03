@@ -117,6 +117,92 @@ public:
     unsigned int nTime;
 };
 
+//! Maximum number of addresses accepted in a single `addr` / `addrv2` message.
+static const unsigned int MAX_ADDRV2_TO_RECV = 1000;
+
+/**
+ * Isolated BIP155 (`addrv2`) serializer for a vector<CAddress>.
+ *
+ * Writes only the addrv2 wire format and never touches the legacy V1
+ * CAddress::SerializationOp (which is used by `addr` and peers.dat), so it
+ * cannot perturb those byte-for-byte-stable encodings. Addresses whose network
+ * is not representable in addrv2 (e.g. legacy Tor v2) are skipped.
+ *
+ * Per-address wire format (BIP155):
+ *   uint32      nTime (LE)
+ *   CompactSize nServices
+ *   uint8       networkID
+ *   CompactSize addrlen
+ *   uint8[]     addr bytes
+ *   uint16      port (big-endian)
+ */
+class CAddrV2Writer
+{
+    const std::vector<CAddress>& m_vec;
+public:
+    explicit CAddrV2Writer(const std::vector<CAddress>& vec) : m_vec(vec) {}
+
+    template <typename Stream>
+    void Serialize(Stream& s) const
+    {
+        std::vector<const CAddress*> sendable;
+        sendable.reserve(m_vec.size());
+        for (const CAddress& a : m_vec) {
+            if (a.GetBIP155Network() != 0)
+                sendable.push_back(&a);
+        }
+        WriteCompactSize(s, sendable.size());
+        for (const CAddress* pa : sendable) {
+            const CAddress& addr = *pa;
+            ser_writedata32(s, addr.nTime);
+            WriteCompactSize(s, addr.nServices);
+            ser_writedata8(s, addr.GetBIP155Network());
+            std::vector<unsigned char> bytes = addr.GetAddrV2Bytes();
+            WriteCompactSize(s, bytes.size());
+            if (!bytes.empty())
+                s.write((const char*)bytes.data(), bytes.size());
+            unsigned short port = addr.GetPort();
+            ser_writedata8(s, (unsigned char)((port >> 8) & 0xff));
+            ser_writedata8(s, (unsigned char)(port & 0xff));
+        }
+    }
+};
+
+/** Parse an `addrv2` message body into vAddr, skipping unsupported networks. */
+template <typename Stream>
+void UnserializeAddrV2(Stream& s, std::vector<CAddress>& vAddr)
+{
+    uint64_t count = ReadCompactSize(s);
+    if (count > MAX_ADDRV2_TO_RECV)
+        throw std::ios_base::failure("addrv2 message size exceeds limit");
+    vAddr.clear();
+    vAddr.reserve(count);
+    for (uint64_t i = 0; i < count; ++i) {
+        uint32_t nTime = ser_readdata32(s);
+        uint64_t nServices = ReadCompactSize(s);
+        uint8_t network_id = ser_readdata8(s);
+        uint64_t addrlen = ReadCompactSize(s);
+        // Generous upper bound; representable networks are <= 32 bytes, but we
+        // must still consume the bytes of unknown-but-well-formed networks.
+        if (addrlen > 512)
+            throw std::ios_base::failure("addrv2 address field too long");
+        std::vector<unsigned char> bytes(addrlen);
+        if (addrlen)
+            s.read((char*)bytes.data(), addrlen);
+        uint8_t port_hi = ser_readdata8(s);
+        uint8_t port_lo = ser_readdata8(s);
+        unsigned short port = ((uint16_t)port_hi << 8) | port_lo;
+
+        CNetAddr na;
+        if (na.SetBIP155(network_id, bytes)) {
+            CAddress addr(CService(na, port), nServices);
+            addr.nTime = nTime;
+            vAddr.push_back(addr);
+        }
+        // Unknown / unsupported networks are skipped (bytes already consumed).
+    }
+}
+
 /** getdata / inv message types.
  * These numbers are defined by the protocol. When adding a new value, be sure
  * to mention it in the respective ZIP, as well as checking for collisions with

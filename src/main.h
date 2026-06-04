@@ -144,7 +144,17 @@ static const int64_t DEFAULT_MAX_TIP_AGE = 24 * 60 * 60;
 /** Default for -permitbaremultisig */
 static const bool DEFAULT_PERMIT_BAREMULTISIG = true;
 static const bool DEFAULT_CHECKPOINTS_ENABLED = true;
-static const bool DEFAULT_IBD_SKIP_TX_VERIFICATION = false;
+// Skip *structural* transaction checks (e.g. tx size limits) for blocks that are
+// ancestors of the last hardcoded checkpoint during initial block download.
+// Defaults to true for Zclassic: the historical Zclassic chain contains blocks
+// and transactions that violate the *current* consensus size limits (chain
+// variations / forks), and the checkpoints prove that historical chain is the
+// canonical one. The expensive crypto checks (proofs, signatures, scripts) are
+// already skipped for pre-checkpoint blocks (see ConnectBlock), so enforcing the
+// cheap size rules on those same blocks only blocks a sync-from-genesis without
+// adding security. Post-checkpoint blocks are still fully verified. Requires
+// checkpoints to be enabled (it is a no-op when they are not).
+static const bool DEFAULT_IBD_SKIP_TX_VERIFICATION = true;
 static const bool DEFAULT_TXINDEX = false;
 static const unsigned int DEFAULT_BANSCORE_THRESHOLD = 100;
 

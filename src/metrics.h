@@ -1,13 +1,17 @@
-// Copyright (c) 2016 The Zcash developers
-// Copyright (c) 2025 The Zclassic developers
+// Copyright (c) 2016-2023 The Zcash developers
+// Copyright (c) 2025-2026 The Zclassic developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
+#ifndef ZCASH_METRICS_H
+#define ZCASH_METRICS_H
 
 #include "uint256.h"
 #include "consensus/params.h"
 
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <string>
 
 struct AtomicCounter {
@@ -49,6 +53,8 @@ public:
      */
     void stop();
 
+    void zeroize();
+
     bool running();
 
     uint64_t threadCount();
@@ -56,22 +62,32 @@ public:
     double rate(const AtomicCounter& count);
 };
 
+enum DurationFormat {
+    FULL,
+    REDUCED
+};
+
 extern AtomicCounter transactionsValidated;
 extern AtomicCounter ehSolverRuns;
 extern AtomicCounter solutionTargetChecks;
 extern AtomicTimer miningTimer;
+extern std::atomic<size_t> nSizeReindexed; // valid only during reindex
+extern std::atomic<size_t> nFullSizeToReindex; // valid only during reindex
 
 void TrackMinedBlock(uint256 hash);
 
 void MarkStartTime();
 double GetLocalSolPS();
 int EstimateNetHeight(const Consensus::Params& params, int currentBlockHeight, int64_t currentBlockTime);
+std::optional<int64_t> SecondsLeftToNextEpoch(const Consensus::Params& params, int currentHeight);
+std::string DisplayDuration(int64_t time, DurationFormat format);
+std::string DisplaySize(size_t value);
+std::string DisplayHashRate(double value);
 
 void TriggerRefresh();
 
 void ConnectMetricsScreen();
 void ThreadShowMetricsScreen();
-
 /**
  * Heart image: https://commons.wikimedia.org/wiki/File:Heart_coraz%C3%B3n.svg
  * License: CC BY-SA 3.0
@@ -114,5 +130,4 @@ void ThreadShowMetricsScreen();
 "          [0;1;30;90;43mX[0;33;5;43;103m.[0;1;31;91;43m8[0;1;33;93;43m...............[0;1;31;91;43m8[0;33;5;43;103m.[0;1;30;90;43m@[0m                               [0;1;31;91;41m8[0;31;5;41;101m     [0;1;31;91;41m8[0m                   \n"
 "               [0;1;30;90;43mX[0;1;31;91;43m8[0;33;5;43;103m.......[0;1;31;91;43m8[0;1;30;90;43mX[0m                                       [0;31;5;41;101m.[0m                      \n";
 
-#endif
-
+#endif // ZCASH_METRICS_H

@@ -3193,10 +3193,26 @@ static int64_t nTimeTotal = 0;
  *   - the block under inspection is an ancestor of the latest checkpoint.
  */
 static bool ShouldCheckTransactions(const CChainParams& chainparams, const CBlockIndex* pindex) {
+    // Skip the (cheap, structural) transaction checks for blocks at or below the
+    // highest hardcoded checkpoint height while still in initial block download.
+    //
+    // We gate on the checkpoint *height* (GetTotalBlocksEstimate) rather than
+    // Checkpoints::IsAncestorOfLastCheckpoint(): the latter requires the
+    // checkpoint *block* to already be in the block index, which is not
+    // guaranteed during a sync from genesis (an early block body can be connected
+    // before the header for the highest checkpoint has been received). When that
+    // happens the ancestor test fails and we would wrongly re-enforce current
+    // consensus rules (e.g. tx size limits) on historical blocks that predate
+    // them — which is exactly what stalls a genesis sync. The chain is still
+    // anchored: blocks must connect by proof-of-work and must match the hardcoded
+    // checkpoint hashes when those heights are reached, so trusting pre-checkpoint
+    // history by height during IBD is safe. Expensive checks (proofs/signatures/
+    // scripts) are gated separately in ConnectBlock.
     return !(fIBDSkipTxVerification
              && fCheckpointsEnabled
+             && pindex != nullptr
              && IsInitialBlockDownload(chainparams.GetConsensus())
-             && Checkpoints::IsAncestorOfLastCheckpoint(chainparams.Checkpoints(), pindex));
+             && pindex->nHeight <= Checkpoints::GetTotalBlocksEstimate(chainparams.Checkpoints()));
 }
 
 static bool CheckBlockBodyAuthCommitment(

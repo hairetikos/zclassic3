@@ -52,7 +52,7 @@ What's new in 3.0
 The `zclassicd` Full Node
 -------------------------
 
-<img width="910" height="501" alt="image" src="https://github.com/user-attachments/assets/7e2db6c7-1788-4c53-baca-9793a9fd07f3" />
+<img width="904" height="499" alt="image" src="https://github.com/user-attachments/assets/db7377b7-044f-42da-9e26-1e02f65f13c5" />
 
 This repository hosts `zclassicd`, a Zclassic consensus node. It downloads and
 stores the entire history of Zclassic transactions and validates them. Depending

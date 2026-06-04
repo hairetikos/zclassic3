@@ -22,7 +22,7 @@ transactions. Depending on the speed of your computer and network
 connection, the synchronization process could take several days.
 
 <p align="center">
-  <img src="doc/imgs/zcashd_screen.gif" height="500">
+<img width="904" height="498" alt="image" src="https://github.com/user-attachments/assets/27631250-44c9-4657-8c97-f2120373488b" />
 </p>
 
 The `zcashd` code is derived from a source fork of

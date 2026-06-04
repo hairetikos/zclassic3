@@ -1104,9 +1104,13 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     if (nMaxConnections < nUserMaxConnections)
         InitWarning(strprintf(_("Reducing -maxconnections from %d to %d, because of system limitations."), nUserMaxConnections, nMaxConnections));
 
-    // ensure that the user has not disabled checkpoints when requesting to
-    // skip transaction verification in initial block download.
-    if (GetBoolArg("-ibdskiptxverification", DEFAULT_IBD_SKIP_TX_VERIFICATION)) {
+    // ensure that the user has not disabled checkpoints when *explicitly*
+    // requesting to skip transaction verification in initial block download.
+    // (This skip now defaults to on for Zclassic; when it is merely the default
+    // and the user disables checkpoints, it silently becomes a no-op rather than
+    // an error — ShouldCheckTransactions() also gates on checkpoints being on.)
+    if (mapArgs.count("-ibdskiptxverification") &&
+        GetBoolArg("-ibdskiptxverification", DEFAULT_IBD_SKIP_TX_VERIFICATION)) {
         if (!GetBoolArg("-checkpoints", DEFAULT_CHECKPOINTS_ENABLED)) {
             return InitError(_("-ibdskiptxverification requires checkpoints to be enabled; it is incompatible with flags that disable checkpoints"));
         }

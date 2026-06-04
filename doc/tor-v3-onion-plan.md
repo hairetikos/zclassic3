@@ -172,21 +172,34 @@ address parses and `ToStringIP()` yields the correct 56-char `.onion`.
   and log it under `-debug=net`. Unknown messages are ignored by legacy peers, so
   this is safe. This is the handshake substrate the gossip wiring builds on; no
   addresses are sent/received in `addrv2` format yet.
-- **Pending (2c) — the gossip + persistence wiring (do with the build/test loop,
-  as it touches live address relay and the on-disk `peers.dat` on a running
-  mainnet node):**
-  - Isolated BIP155 (de)serialization for `CAddress` (a standalone
-    `network_id‖CompactSize(len)‖bytes‖port` writer/reader that never touches the
-    V1 `SerializationOp`), plus `CNetAddr` BIP155 get/set accessors (TORV3 = the
-    32-byte pubkey; `Set` rebuilds the 35-byte blob via the new SHA3 checksum).
-  - `addrv2` receive handler (parse → process like `addr`), and a send path that
-    emits `addrv2` (V2) to `m_wants_addrv2` peers and `addr` (V1, **skipping v3**)
-    to the rest — so v3 is never sent as an all-zero V1 address.
-  - `AddLocal()` our own v3 (now safe to advertise, via `addrv2` only) and relay
-    received v3 only to addrv2-capable peers.
-  - `addrman`/`peers.dat` **V2** (bump the version; V2-serialize entries; keep V1
-    read-compat) so learned v3 peers persist without polluting V1 `peers.dat`.
-- Optional later: clean `m_addr` unification + exact onion `CSubNet` matching.
+- DONE (2c): `addrv2` **gossip wiring** — Tor v3 (and other long-form addresses)
+  now propagate over the P2P network:
+  - Isolated BIP155 (de)serialization (`CAddrV2Writer` + `UnserializeAddrV2` in
+    `protocol.h`): a standalone `nTime‖CompactSize(services)‖network_id‖
+    CompactSize(len)‖bytes‖port(BE)` writer/reader that never touches the V1
+    `CAddress::SerializationOp` (so `addr`/`peers.dat` stay byte-identical).
+  - `CNetAddr` BIP155 accessors (`GetBIP155Network`/`GetAddrV2Bytes`/`SetBIP155`/
+    `SetTorV3FromPubkey`): TORV3 = the 32-byte pubkey on the wire; `Set` rebuilds
+    the 35-byte decoded blob via the SHA3-256 checksum. v2/I2P/CJDNS/unknown are
+    skipped (not representable here).
+  - `addr`/`addrv2` receive is merged into one handler (addrv2 parsed via the V2
+    reader); the send path in `SendMessages` emits `addrv2` to `m_wants_addrv2`
+    peers and `addr` (V1, **skipping v3**) to the rest — v3 is never sent as an
+    all-zero V1 address. Relay of received v3 flows through the same path.
+  - `AddLocal()` of our own v3 (`torcontrol.cpp`): now safe, since self-
+    advertisement only reaches addrv2-capable peers.
+- **Deferred (2c-persistence): v3 in `addrman`/`peers.dat`.** v3 addresses are
+  relayed and self-advertised live, but deliberately **not** stored in `addrman`:
+  `addrman` persists to `peers.dat` via the legacy V1 `CAddress` encoding, which
+  has no v3 representation and would write all-zero entries. Persisting v3 cleanly
+  needs either (a) the full `m_addr` unification + stream-flag-selected V1/V2
+  serialization (Bitcoin's approach), or (b) a V2 `peers.dat` format bump with a
+  v3-aware per-entry encoder and V1 read-compat. Both change the on-disk format on
+  a live mainnet node, so they are held for the dedicated build/test loop. Net
+  effect today: v3 peers are re-learned via gossip each session rather than
+  surviving a restart — functionally complete discovery, zero `peers.dat` risk.
+- Optional later: clean `m_addr` unification + exact onion `CSubNet` matching +
+  V2 `peers.dat` persistence.
 
 **Phase 2: P2P discovery.**
 - `addrv2`/`sendaddrv2`, per-peer negotiation and relay, V2 serialization.

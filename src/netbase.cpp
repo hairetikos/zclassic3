@@ -674,15 +674,34 @@ static const size_t ADDR_TORV3_DECODED_SIZE = 35;
 //! Trailing version byte of a Tor v3 onion address.
 static const unsigned char TORV3_VERSION_BYTE = 0x03;
 
-//! Verify the 2-byte checksum embedded in a decoded Tor v3 onion address.
+//! Compute the 2-byte Tor v3 checksum of a 32-byte ed25519 pubkey.
 //! checksum = SHA3-256(".onion checksum" || pubkey || version)[:2].
+//! Returns false (without writing `out`) only if the SHA3-256 self-test fails.
+static bool TorV3Checksum(const unsigned char* pubkey, unsigned char out[2])
+{
+    static const bool sha3_ok = SHA3_256_SelfTest();
+    if (!sha3_ok)
+        return false;
+    SHA3_256 hasher;
+    hasher.Write(reinterpret_cast<const unsigned char*>(".onion checksum"), 15);
+    hasher.Write(pubkey, 32);
+    unsigned char ver = TORV3_VERSION_BYTE;
+    hasher.Write(&ver, 1);
+    unsigned char digest[SHA3_256::OUTPUT_SIZE];
+    hasher.Finalize(digest);
+    out[0] = digest[0];
+    out[1] = digest[1];
+    return true;
+}
+
+//! Verify the 2-byte checksum embedded in a decoded Tor v3 onion address.
 //! Fails open (returns true without checking) only if the SHA3-256 self-test
 //! fails, so a miscompiled build can never regress v3 parsing; Tor independently
 //! validates the checksum when we actually connect.
 static bool TorV3ChecksumValid(const std::vector<unsigned char>& decoded)
 {
-    static const bool sha3_ok = SHA3_256_SelfTest();
-    if (!sha3_ok) {
+    unsigned char chk[2];
+    if (!TorV3Checksum(decoded.data(), chk)) {
         static bool warned = false;
         if (!warned) {
             warned = true;
@@ -690,14 +709,7 @@ static bool TorV3ChecksumValid(const std::vector<unsigned char>& decoded)
         }
         return true;
     }
-    SHA3_256 hasher;
-    hasher.Write(reinterpret_cast<const unsigned char*>(".onion checksum"), 15);
-    hasher.Write(decoded.data(), 32);
-    unsigned char ver = TORV3_VERSION_BYTE;
-    hasher.Write(&ver, 1);
-    unsigned char digest[SHA3_256::OUTPUT_SIZE];
-    hasher.Finalize(digest);
-    return digest[0] == decoded[32] && digest[1] == decoded[33];
+    return chk[0] == decoded[32] && chk[1] == decoded[33];
 }
 
 bool CNetAddr::SetSpecial(const std::string &strName)
@@ -862,6 +874,68 @@ bool CNetAddr::IsTorV3() const
 bool CNetAddr::IsTor() const
 {
     return IsTorV3() || (memcmp(ip, pchOnionCat, sizeof(pchOnionCat)) == 0);
+}
+
+uint8_t CNetAddr::GetBIP155Network() const
+{
+    if (IsTorV3())
+        return BIP155_TORV3;
+    if (IsIPv4())
+        return BIP155_IPV4;
+    // Legacy Tor v2 (OnionCat) is deliberately not advertised over addrv2.
+    if (memcmp(ip, pchOnionCat, sizeof(pchOnionCat)) == 0)
+        return 0;
+    if (IsIPv6())
+        return BIP155_IPV6;
+    return 0;
+}
+
+std::vector<unsigned char> CNetAddr::GetAddrV2Bytes() const
+{
+    if (IsTorV3())
+        return std::vector<unsigned char>(m_addr_onion.begin(), m_addr_onion.begin() + 32);
+    if (IsIPv4())
+        return std::vector<unsigned char>(ip + 12, ip + 16);
+    return std::vector<unsigned char>(ip, ip + 16);
+}
+
+bool CNetAddr::SetTorV3FromPubkey(const unsigned char pubkey[32])
+{
+    unsigned char chk[2];
+    if (!TorV3Checksum(pubkey, chk))
+        return false;
+    std::vector<unsigned char> blob(pubkey, pubkey + 32);
+    blob.push_back(chk[0]);
+    blob.push_back(chk[1]);
+    blob.push_back(TORV3_VERSION_BYTE);
+    Init();
+    m_addr_onion = blob;
+    return true;
+}
+
+bool CNetAddr::SetBIP155(uint8_t bip155_network, const std::vector<unsigned char>& bytes)
+{
+    switch (bip155_network) {
+    case BIP155_IPV4:
+        if (bytes.size() != 4)
+            return false;
+        Init();
+        SetRaw(NET_IPV4, bytes.data());
+        return true;
+    case BIP155_IPV6:
+        if (bytes.size() != 16)
+            return false;
+        Init();
+        SetRaw(NET_IPV6, bytes.data());
+        return true;
+    case BIP155_TORV3:
+        if (bytes.size() != 32)
+            return false;
+        return SetTorV3FromPubkey(bytes.data());
+    default:
+        // BIP155_TORV2 / I2P / CJDNS / unknown: not representable here.
+        return false;
+    }
 }
 
 bool CNetAddr::IsLocal() const

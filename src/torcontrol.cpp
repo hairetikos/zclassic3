@@ -508,14 +508,13 @@ void TorController::add_onion_cb(TorControlConnection& _conn, const TorControlRe
         service = CService(onion_address, GetListenPort(), false);
         if (service.IsTorV3()) {
             // The v3 hidden service is created in Tor and reachable for inbound
-            // connections at this address. We deliberately do NOT AddLocal() it
-            // yet: a v3 address has no legacy (V1) representation, so advertising
-            // it over the current `addr` gossip would emit an unroutable all-zero
-            // address. Self-advertisement of our v3 address over the P2P network
-            // requires addrv2 (see doc/tor-v3-onion-plan.md, Phase 2).
-            LogPrintf("tor: Created Tor v3 hidden service, reachable at %s:%i. "
-                      "(P2P gossip of our v3 address requires addrv2; not yet enabled.)\n",
-                      onion_address, GetListenPort());
+            // connections at this address. addrv2 gossip is now wired (Phase 2c),
+            // so we AddLocal() it and self-advertise: it is only ever sent to
+            // peers that negotiated `sendaddrv2` (the legacy `addr` path skips v3
+            // rather than emitting an all-zero address).
+            LogPrintf("tor: Got Tor v3 service ID %s, advertising service %s via addrv2\n",
+                      service_id, service.ToString());
+            AddLocal(service, LOCAL_MANUAL);
         } else if (service.IsValid()) {
             // Legacy (v2) service id, representable by the current CNetAddr.
             LogPrintf("tor: Got service ID %s, advertising service %s\n", service_id, service.ToString());

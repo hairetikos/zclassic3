@@ -1,85 +1,63 @@
-Zcash 6.12.3
-<img align="right" width="120" height="80" src="doc/imgs/logo.png">
-===========
-
-What is Zcash?
---------------
-
-[Zcash](https://z.cash/) is HTTPS for money.
-
-Initially based on Bitcoin's design, Zcash has been developed from
-the Zerocash protocol to offer a far higher standard of privacy and
-anonymity. It uses a sophisticated zero-knowledge proving scheme to
-preserve confidentiality and hide the connections between shielded
-transactions. More technical details are available in our
-[Protocol Specification](https://zips.z.cash/protocol/protocol.pdf).
-
-## The `zcashd` Full Node
-
-This repository hosts the `zcashd` software, a Zcash consensus node
-implementation. It downloads and stores the entire history of Zcash
-transactions. Depending on the speed of your computer and network
-connection, the synchronization process could take several days.
-
-<p align="center">
-<img width="904" height="498" alt="image" src="https://github.com/user-attachments/assets/27631250-44c9-4657-8c97-f2120373488b" />
-</p>
-
-The `zcashd` code is derived from a source fork of
-[Bitcoin Core](https://github.com/bitcoin/bitcoin). The code was forked
-initially from Bitcoin Core v0.11.2, and the two codebases have diverged
+Zclassic 3.0 — "sigma"
 substantially.
+
+Network facts (mainnet)
+-----------------------
+
+| Item | Value |
+| --- | --- |
+| Currency unit | `ZCL` |
+| Default P2P port | `8033` |
+| Default RPC port | `8232` |
+| Transparent address prefix | `t1…` / `t3…` |
+| Sapling shielded address prefix | `zs…` |
+| BIP44 coin type | `147` |
 
 #### :lock: Security Warnings
 
-See important security warnings on the
-[Security Information page](https://z.cash/support/security/).
+**Zclassic 3.0 is experimental and a work in progress.** Use it at your own risk.
+Tor Onion v3 support is *initial* — exercise it on testnet and verify behavior
+before relying on it for strong anonymity. Always keep encrypted backups of your
+wallet.
 
-**Zcash is experimental and a work in progress.** Use it at your own risk.
-
-####  :ledger: Deprecation Policy
-
-This release is considered deprecated 16 weeks after the release day. There
-is an automatic deprecation shutdown feature which will halt the node some
-time after this 16-week period. The automatic feature is based on block
-height.
-
-## Other Zcash Implementations
-
-The [Zebra](https://github.com/ZcashFoundation/zebra) project offers a
-different Zcash consensus node implementation, written largely from the
-ground up.
-
-## Getting Started
-
-Please see our [user
-guide](https://zcash.readthedocs.io/en/latest/rtd_pages/rtd_docs/user_guide.html)
-for instructions on joining the main Zcash network.
-
-### Need Help?
-
-* :blue_book: See the documentation at the [ReadTheDocs](https://zcash.readthedocs.io)
-  for help and more information.
-* :incoming_envelope: Ask for help on the [Zcash forum](https://forum.zcashcommunity.com/).
-* :speech_balloon: Join our community on the [Zcash Global Discord](https://discord.com/invite/zcash).
-* 🧑‍🎓: Learn at [ZecHub](https://zechub.wiki/)
-
-Participation in the Zcash project is subject to a
-[Code of Conduct](code_of_conduct.md).
+Getting Started
+---------------
 
 ### Building
 
-Build Zcash along with most dependencies from source by running the following command:
+Build `zclassicd` along with most of its dependencies from source:
 
 ```
 ./zcutil/build.sh -j$(nproc)
 ```
 
-Currently, Zcash is only officially supported on Debian and Ubuntu. See the
-[Debian / Ubuntu build page](https://zcash.readthedocs.io/en/latest/rtd_pages/Debian-Ubuntu-build.html)
-for detailed instructions.
+Useful build options:
+
+```
+./zcutil/build.sh -rebuild -j$(nproc)        # fast incremental rebuild after edits
+MARCH_NATIVE=1 ./zcutil/build.sh -j$(nproc)  # CPU-tuned binary (recommended)
+OPTIMIZE=1     ./zcutil/build.sh -j$(nproc)  # -O3 -march=native
+```
+
+Zclassic is officially supported on Debian and Ubuntu.
+
+### Running
+
+```
+./src/zclassicd                      # start the node
+./src/zclassic-cli getinfo           # query a running node
+./src/zclassic-cli help              # list RPC commands
+```
+
+To run as a Tor v3 hidden service, run a local Tor daemon with its control port
+enabled and start `zclassicd` with `-listenonion=1` (the default proxy/control
+settings match a standard Tor install). The node will create a persistent v3
+`.onion` service and advertise it to v3-capable peers.
 
 License
 -------
 
 For license information see the file [COPYING](COPYING).
+
+Zclassic builds on the work of the Zcash and Bitcoin Core developers; see
+[`doc/authors.md`](doc/authors.md).

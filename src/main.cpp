@@ -1762,6 +1762,23 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
             return state.DoS(100, error("CheckTransaction(): coinbase has enableSpendsOrchard set"),
                              REJECT_INVALID, "bad-cb-has-orchard-spend");
 
+        // A coinbase transaction has no Sapling spends or spend-enabled Orchard
+        // actions (rejected above), so its shielded value balance is the negation
+        // of the value of its shielded outputs and cannot be positive. A positive
+        // value balance would be unsatisfiable by the binding signature, hence
+        // always invalid (independently of the NU6 exact-coinbase-balance rule).
+        // Rejecting it here, rather than only via the binding-signature check in
+        // ConnectBlock, prevents a malformed coinbase from reaching the chain
+        // supply consistency check with inconsistent pool accounting, which would
+        // otherwise call AbortNode (a remotely-triggerable crash/crash-loop).
+        // Addresses GHSA-g4x5-crjh-29ff.
+        if (tx.GetValueBalanceSapling() > 0)
+            return state.DoS(100, error("CheckTransaction(): coinbase has positive Sapling value balance"),
+                             REJECT_INVALID, "bad-cb-positive-sapling-valuebalance");
+        if (orchard_bundle.GetValueBalance() > 0)
+            return state.DoS(100, error("CheckTransaction(): coinbase has positive Orchard value balance"),
+                             REJECT_INVALID, "bad-cb-positive-orchard-valuebalance");
+
         if (tx.vin[0].scriptSig.size() < 2 || tx.vin[0].scriptSig.size() > 100)
             return state.DoS(100, false, REJECT_INVALID, "bad-cb-length");
     }
@@ -3787,6 +3804,31 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     view.PushAnchor(sprout_tree);
     view.PushAnchor(sapling_tree);
     view.PushAnchor(orchard_tree);
+
+    // Validate the Sapling and Orchard binding signatures here, before the
+    // chain supply consistency check below. The binding signatures are what
+    // enforce that each bundle's value balance is consistent with its shielded
+    // inputs and outputs. If they are not checked first, a block containing a
+    // malformed value balance could reach the supply consistency check with
+    // inconsistent pool accounting and trigger AbortNode (a node crash) instead
+    // of being cleanly rejected as invalid. Addresses GHSA-g4x5-crjh-29ff.
+    //
+    // This must run for both `fJustCheck` and full connection, so it is placed
+    // before the `if (!fJustCheck)` block. The `has_value()` guards mean the
+    // validators run only when expensive checks are enabled (`fExpensiveChecks`);
+    // they are skipped for block-template checks and for ancestors of the last
+    // checkpoint.
+    if (saplingAuth.has_value() && !saplingAuth.value()->validate()) {
+        return state.DoS(100,
+            error("%s: a Sapling bundle within the block is invalid", __func__),
+            REJECT_INVALID, "bad-sapling-bundle-authorization");
+    }
+    if (orchardAuth.has_value() && !orchardAuth.value()->validate()) {
+        return state.DoS(100,
+            error("%s: an Orchard bundle within the block is invalid", __func__),
+            REJECT_INVALID, "bad-orchard-bundle-authorization");
+    }
+
     if (!fJustCheck) {
         // Update pindex with the net change in value and the chain's total value,
         // both for the supply and for the transparent pool.
@@ -4020,19 +4062,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             REJECT_INVALID, "bad-cb-not-exact");
     }
 
-    // Ensure Sapling authorizations are valid (if we are checking them)
-    if (saplingAuth.has_value() && !saplingAuth.value()->validate()) {
-        return state.DoS(100,
-            error("%s: a Sapling bundle within the block is invalid", __func__),
-            REJECT_INVALID, "bad-sapling-bundle-authorization");
-    }
-
-    // Ensure Orchard signatures are valid (if we are checking them)
-    if (orchardAuth.has_value() && !orchardAuth.value()->validate()) {
-        return state.DoS(100,
-            error("%s: an Orchard bundle within the block is invalid", __func__),
-            REJECT_INVALID, "bad-orchard-bundle-authorization");
-    }
+    // (The Sapling and Orchard bundle authorizations are validated earlier,
+    // before the chain supply consistency check; see GHSA-g4x5-crjh-29ff.)
 
     if (!control.Wait())
         return state.DoS(100, false);
@@ -5412,13 +5443,20 @@ bool ReceivedBlockTransactions(
 {
     // Compute per-block pool value deltas first. `SetChainPoolValues` can
     // fail if the running sum of per-pool values overflows the valid
-    // monetary range. If it does, return without mutating `pindexNew`:
-    // leaving the block index in its prior (header-only) state means
-    // future processing will not consider the block as having data, and
-    // the on-disk block file is harmlessly orphaned (it will be ignored,
-    // or cleaned up by the next reindex).
+    // monetary range. On failure `pindexNew` is left in its prior
+    // (header-only) state and the sending peer is banned (see below).
     if (!SetChainPoolValues(chainparams, block, pindexNew)) {
-        return error("ReceivedBlockTransactions(): SetChainPoolValues failed");
+        // The aggregate pool-value delta is outside the valid monetary range.
+        // This is a deterministic property of the block (ComputePoolDeltas reads
+        // only `block`, `chainparams`, and `nHeight`), so every honest node
+        // rejects the same block and the sending peer can safely be banned. The
+        // DoS score is what bounds an otherwise-unbounded re-write replay: without
+        // it the index entry stays header-only (no BLOCK_HAVE_DATA) and replaying
+        // the same P2P block message re-writes the block body to disk forever
+        // (GHSA-78pp-mc9g-g4mw).
+        return state.DoS(100,
+            error("ReceivedBlockTransactions(): SetChainPoolValues failed"),
+            REJECT_INVALID, "bad-blk-pool-value-out-of-range");
     }
 
     pindexNew->nTx = block.vtx.size();
@@ -5456,7 +5494,18 @@ bool ReceivedBlockTransactions(
             // block reception can defer the parent's chain values becoming
             // available until after `SetChainPoolValues` was called.
             if (!AccumulateChainPoolValues(pindex)) {
-                return error("ReceivedBlockTransactions(): AccumulateChainPoolValues failed at height %d", pindex->nHeight);
+                error("ReceivedBlockTransactions(): AccumulateChainPoolValues failed at height %d", pindex->nHeight);
+                // A cumulative pool value is out of range: a deterministic
+                // consensus failure. `state` belongs to `pindexNew`, so only its
+                // own failure can be recorded through it. A descendant (linked in
+                // from `mapBlocksUnlinked`, possibly from another peer) is left for
+                // `ConnectBlock` to reject, to avoid mis-attributing the ban
+                // (GHSA-78pp-mc9g-g4mw).
+                if (pindex == pindexNew) {
+                    return state.DoS(100, false, REJECT_INVALID,
+                        "bad-blk-pool-value-out-of-range");
+                }
+                return false;
             }
 
             // Fall back to hardcoded Sprout value pool balance
@@ -5851,7 +5900,11 @@ static bool AcceptBlockHeader(const CBlockHeader& block, CValidationState& state
             return state.DoS(10, error("%s: prev block not found", __func__), 0, "bad-prevblk");
         pindexPrev = (*mi).second;
         if (pindexPrev->nStatus & BLOCK_FAILED_MASK)
-            return state.DoS(100, error("%s: prev block invalid", __func__), REJECT_INVALID, "bad-prevblk");
+            // Building a header atop a block we already know to be invalid is not,
+            // by itself, strong evidence of misbehaviour (a peer may simply be on
+            // a doomed fork); use a DoS score of 0 so an honest-but-unlucky peer is
+            // not banned for relaying such headers. The header is still rejected.
+            return state.DoS(0, error("%s: prev block invalid", __func__), REJECT_INVALID, "bad-prevblk");
     }
 
     if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev))

@@ -82,6 +82,61 @@ Tor Onion v3 support is *initial* — exercise it on testnet and verify behavior
 before relying on it for strong anonymity. Always keep encrypted backups of your
 wallet.
 
+Roadmap &amp; future direction
+--------------------------
+
+Zclassic 3.0 is a foundation, not a finish line. A few things are deliberately
+in place for what comes next.
+
+### Dormant modern features (kept in the code, not activated)
+
+The rebase onto modern `zcashd` means this codebase **still contains** the newer
+Zcash shielded machinery — **Orchard**, **unified addresses**, and **v5/ZIP-225
+transactions** (NU5/NU6 logic) — but Zclassic does **not** activate any of it.
+These features are held at "never activate" upgrade heights, so they are present
+and forward-compatible but completely inert: the live Zclassic consensus is
+unchanged.
+
+This is a deliberate design choice (gate by activation height, never by
+deletion). It means the Zclassic **community can decide, in the future, to turn
+these on as a coordinated chain upgrade (hardfork)**. Crucially:
+
+- **No one has to buy ZCL again.** Such an upgrade is an evolution of the *same*
+  chain — your existing coins and balances carry straight over to the upgraded
+  network. There is no new coin, no swap, and no migration purchase.
+- Because the machinery is already compiled and tested, activating it would be
+  primarily a matter of scheduling activation heights and minting
+  Zclassic-specific consensus branch IDs — not a from-scratch rewrite.
+
+(See [`doc/zclassicd-port-plan.md`](doc/zclassicd-port-plan.md) for exactly how
+these features are kept dormant-but-enableable.)
+
+### Planned: multi-cipher (cascade) wallet encryption
+
+We plan to strengthen at-rest wallet protection well beyond a single cipher,
+using layered **cipher cascades** so that breaking the wallet would require
+breaking *every* layer:
+
+- **Windows / macOS** — a **3-cipher cascade** of **AES → Serpent → Twofish**,
+  in the style of VeraCrypt volumes.
+- **Linux** — a **5-cipher cascade** that additionally layers in **Camellia**
+  and a **final AES** pass (AES → Serpent → Twofish → Camellia → AES), built on
+  `dm-crypt`.
+
+The goal is defense-in-depth: independent, well-studied ciphers stacked so that a
+weakness (or future break) in any single algorithm does not expose the wallet.
+
+### Planned: privacy &amp; security hardening beyond Zcash
+
+Zclassic intends to push **further than Zcash** on privacy and resilience,
+including **quantum-resistant** (post-quantum) privacy and security features. As
+practical post-quantum schemes mature, the aim is to harden Zclassic's shielded
+transactions, key material, and network/identity layers against both present-day
+and future (quantum-capable) adversaries.
+
+These are stated intentions and active areas of work, not shipped features in
+3.0; they are listed here so the community knows the direction of travel.
+
 Getting Started
 ---------------
 

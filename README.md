@@ -156,6 +156,10 @@ OPTIMIZE=1     ./zcutil/build.sh -j$(nproc)  # -O3 -march=native
 
 Zclassic is officially supported on Debian and Ubuntu.
 
+**Windows builds** are produced by cross-compiling from Linux with MinGW-w64 —
+see [`doc/windows-build-guide.md`](doc/windows-build-guide.md) for a step-by-step
+guide (toolchain setup, building `zclassicd.exe`, testing under Wine, packaging).
+
 ### Running
 
 ```

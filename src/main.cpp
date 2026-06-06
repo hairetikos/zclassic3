@@ -991,19 +991,33 @@ bool ContextualCheckTransaction(
                     REJECT_INVALID, "bad-sapling-tx-version-group-id");
             }
         }
-    } else {
-        // Rules that apply generally before Sapling. These were
-        // previously noncontextual checks that became contextual
-        // after Sapling activation.
-
-        // Reject transactions that exceed pre-sapling size limits
-        static_assert(MAX_BLOCK_SIZE > MAX_TX_SIZE_BEFORE_SAPLING); // sanity
-        if (::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) > MAX_TX_SIZE_BEFORE_SAPLING)
-            return state.DoS(
-                dosLevelPotentiallyRelaxing,
-                error("ContextualCheckTransaction(): size limits failed"),
-                REJECT_INVALID, "bad-txns-oversize");
     }
+
+    // Transaction size limit (Zclassic, height-aware).
+    //
+    // From the Buttercup upgrade onward we enforce the current standard limit
+    // (MAX_TX_SIZE_AFTER_SAPLING). Before Buttercup the historical Zclassic chain
+    // contains transactions larger than today's limits (the early chain used the
+    // 2 MB Zcash limit and did not enforce the smaller ones), so only the
+    // generous historical ceiling (MAX_BLOCK_SIZE_BEFORE_BUTTERCUP) applies there.
+    // This is what lets a sync from genesis fully verify (rather than skip) those
+    // historical transactions while strictly bounding all current/future ones.
+    //
+    // This replaces the former Sapling-keyed split (pre-Sapling
+    // MAX_TX_SIZE_BEFORE_SAPLING / post-Sapling MAX_TX_SIZE_AFTER_SAPLING checked
+    // non-contextually): the historical over-limit transactions that broke a
+    // full-verification genesis sync were post-Sapling but pre-Buttercup, so the
+    // cutover that matters for the size rule is Buttercup, not Sapling.
+    static_assert(MAX_BLOCK_SIZE_BEFORE_BUTTERCUP > MAX_TX_SIZE_AFTER_SAPLING); // sanity
+    const unsigned int maxTxSize =
+        consensus.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP)
+            ? MAX_TX_SIZE_AFTER_SAPLING
+            : MAX_BLOCK_SIZE_BEFORE_BUTTERCUP;
+    if (::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) > maxTxSize)
+        return state.DoS(
+            dosLevelPotentiallyRelaxing,
+            error("ContextualCheckTransaction(): size limits failed"),
+            REJECT_INVALID, "bad-txns-oversize");
 
     // From Canopy onward, coinbase transaction must include outputs corresponding to the
     // ZIP 207 consensus funding streams active at the current block height. To avoid
@@ -1530,10 +1544,19 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
         return state.DoS(10, false, REJECT_INVALID, "bad-txns-no-sink-of-funds");
     }
 
-    // Size limits
+    // Size limits.
+    // This non-contextual check applies the generous historical ceiling
+    // (MAX_BLOCK_SIZE_BEFORE_BUTTERCUP) as a sanity / DoS bound only, because the
+    // block height is not known here. The strict, era-appropriate transaction
+    // size limit (MAX_TX_SIZE_AFTER_SAPLING, from the Buttercup upgrade onward) is
+    // enforced contextually in ContextualCheckTransaction. This lets historical
+    // pre-Buttercup transactions that exceed today's limit be fully verified
+    // (rather than skipped) when syncing from genesis, while still strictly
+    // bounding all current and future transactions.
     static_assert(MAX_BLOCK_SIZE >= MAX_TX_SIZE_AFTER_SAPLING); // sanity
     static_assert(MAX_TX_SIZE_AFTER_SAPLING > MAX_TX_SIZE_BEFORE_SAPLING); // sanity
-    if (::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) > MAX_TX_SIZE_AFTER_SAPLING)
+    static_assert(MAX_BLOCK_SIZE_BEFORE_BUTTERCUP >= MAX_TX_SIZE_AFTER_SAPLING); // sanity
+    if (::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE_BEFORE_BUTTERCUP)
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-oversize");
 
     // Check for negative or overflow output values
@@ -5645,14 +5668,15 @@ static bool CheckBlockMerkleRoot(const CBlock& block, bool* mutated)
     return !*mutated && computedRoot == block.hashMerkleRoot;
 }
 
-// Generous upper bound used for block *acceptance* (CheckBlock) and for reading
-// blocks back from local block files (LoadExternalBlockFile), as opposed to the
-// standard MAX_BLOCK_SIZE (200000) used for mining. The historical Zclassic
-// chain contains blocks larger than MAX_BLOCK_SIZE (chain variations / forks),
-// which must still validate and load when syncing from genesis; the checkpoints
-// prove the historical chain's correctness, so we only bound the size here
-// defensively. Mirrors the Zclassic reference's GENEROUS_BLOCK_SIZE_LIMIT.
-static const unsigned int GENEROUS_BLOCK_SIZE_LIMIT = 2000000; // 2MB
+// Generous, *non-contextual* upper bound used for block acceptance (CheckBlock)
+// and for reading blocks back from local block files (LoadExternalBlockFile),
+// where the block height is not known. It is the pre-Buttercup historical
+// ceiling: some historical Zclassic blocks exceed the standard MAX_BLOCK_SIZE
+// (200000) used for mining, and must still load and be fully verified when
+// syncing from genesis. The *strict* MAX_BLOCK_SIZE is enforced by height, from
+// the Buttercup upgrade onward, in ContextualCheckBlock — so this bound only
+// caps absurd sizes (DoS) for blocks whose height isn't yet known here.
+static const unsigned int GENEROUS_BLOCK_SIZE_LIMIT = MAX_BLOCK_SIZE_BEFORE_BUTTERCUP; // 2MB
 
 bool CheckBlock(const CBlock& block,
                 CValidationState& state,
@@ -5804,6 +5828,24 @@ bool ContextualCheckBlock(
 {
     const int nHeight = pindexPrev == NULL ? 0 : pindexPrev->nHeight + 1;
     const Consensus::Params& consensusParams = chainparams.GetConsensus();
+
+    // Block size limit (Zclassic, height-aware). From the Buttercup upgrade
+    // onward the standard MAX_BLOCK_SIZE is enforced. Before Buttercup the
+    // historical chain contains larger blocks, bounded only by the generous
+    // MAX_BLOCK_SIZE_BEFORE_BUTTERCUP ceiling that CheckBlock applies
+    // non-contextually. Enforcing the strict limit here (by height) lets a
+    // sync-from-genesis fully verify historical blocks rather than skip them,
+    // while strictly bounding all current and future blocks. This runs
+    // regardless of fCheckTransactions: it is a cheap, fundamental structural
+    // rule, and every real post-Buttercup block already satisfies it.
+    if (consensusParams.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP)) {
+        if (block.vtx.empty() ||
+            block.vtx.size() > MAX_BLOCK_SIZE ||
+            ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE) {
+            return state.DoS(100, error("%s: size limits failed (post-Buttercup)", __func__),
+                             REJECT_INVALID, "bad-blk-length");
+        }
+    }
 
     if (fCheckTransactions) {
         // Check that all transactions are finalized

@@ -94,27 +94,46 @@ All values are MAINNET unless noted, taken from the ZCL reference.
 - Equihash solution-size → (N,K): 1344 → (200,9); 400 → (192,7) from Bubbles
 
 ### Block & transaction sizes (historical variation — sync-critical)
-- **Standard block size** `MAX_BLOCK_SIZE = 200000` (ref `consensus/consensus.h`).
-  This is ZCL's *mining/standard* size (the miner clamps created blocks to it);
-  it is **not** the network block-*acceptance* limit.
-- **Block acceptance** uses a generous **`GENEROUS_BLOCK_SIZE_LIMIT = 2000000`**
-  (2MB) in `CheckBlock` (and the same bound for reading blocks back in
-  `LoadExternalBlockFile`). The historical chain contains blocks larger than
-  `MAX_BLOCK_SIZE` (chain variations / forks), so enforcing the 200000 standard
-  at acceptance rejects valid historical blocks and aborts a genesis sync. The
-  checkpoints prove the historical chain, so the 2MB bound is only defensive.
-- **Transaction size** `MAX_TX_SIZE_BEFORE_SAPLING = 100000`,
-  `MAX_TX_SIZE_AFTER_SAPLING = 102000`. The reference enforces these strictly,
-  but the *historical* chain still contains transactions that exceed them; they
-  are tolerated on sync by the pre-checkpoint skip (below), not by raising the
-  limit (so post-checkpoint blocks still obey 102000).
-- **Pre-checkpoint structural-check skip (the general mechanism).** During
-  initial block download, *all* transaction checks — the cheap structural ones
-  (tx size, etc.) as well as the expensive crypto ones (proofs/signatures/
-  scripts) — are skipped for blocks at or below the highest checkpoint height.
-  This is the clean, general way to tolerate *any* historical consensus variation
-  below the last checkpoint (size, and anything else), rather than special-casing
-  each rule. See Phase 6.
+- **Standard (post-Buttercup) limits**: `MAX_BLOCK_SIZE = 200000`,
+  `MAX_TX_SIZE_AFTER_SAPLING = 102000` (ref `consensus/consensus.h`). These are
+  the limits the live network enforces today.
+- **Historical generous ceiling**: `MAX_BLOCK_SIZE_BEFORE_BUTTERCUP = 2000000`
+  (2MB — the original Zcash 1.0.x block size, also the P2P message ceiling).
+  The early Zclassic chain did not enforce today's smaller limits, so some
+  pre-Buttercup blocks and transactions exceed `MAX_BLOCK_SIZE` /
+  `MAX_TX_SIZE_*`. Bounding them by 2MB lets them be **fully verified** when
+  syncing from genesis.
+- **Height-aware enforcement (the mechanism — full verification, no skipping).**
+  The size limit is selected by height at the **Buttercup** boundary (707000
+  mainnet / 78856 testnet):
+  - **Before Buttercup** → generous 2MB ceiling (`CheckBlock` /
+    `LoadExternalBlockFile` non-contextually; `ContextualCheckTransaction` by
+    height). Historical over-standard data passes the size gate and is then
+    **fully validated** (structure, value balances, turnstile accounting).
+  - **From Buttercup onward** → strict `MAX_BLOCK_SIZE` (in
+    `ContextualCheckBlock`) and `MAX_TX_SIZE_AFTER_SAPLING` (in
+    `ContextualCheckTransaction`), so all recent and future blocks/txs are
+    strictly bounded.
+  This **replaces** the earlier "skip all transaction checks below the last
+  checkpoint" approach (`-ibdskiptxverification` defaulted on + a height-gated
+  `ShouldCheckTransactions`), which was reverted: skipping verification defeats
+  the anti-counterfeiting guarantees. `-ibdskiptxverification` remains an
+  upstream opt-in flag, **off by default** — a from-genesis sync now performs
+  full structural and value verification of every block. See Phase 6.
+
+### Shielded value-pool integrity (ZIP-209 turnstile)
+- The ZIP-209 turnstile (reject any block that drives a shielded value pool
+  negative — `turnstile-violation-*` in `ConnectBlock`) is **fully present** in
+  the code and is **enabled on testnet/regtest but disabled on mainnet**
+  (`fZIP209Enabled`), **exactly matching ZclassicCommunity/zclassic** (whose
+  mainnet also leaves it off; the `nSproutValuePoolCheckpoint` + ZIP-209 enable
+  live in its testnet params). So this is a faithful port, not a regression.
+- The core anti-counterfeiting guarantee does **not** depend on ZIP-209: every
+  shielded transaction's value balance is enforced by its **binding signature**
+  and per-pool accounting in `CheckTransaction`/`ConnectBlock`. ZIP-209 is an
+  additional aggregate safety net. Enabling it on mainnet would diverge from ZCL
+  and likely requires a vetted mainnet Sprout-pool checkpoint balance; treat it
+  as a separate, deliberate decision (tracked, not done here).
 
 ### Anchors
 - checkpoints up to height `3126937` (`0x00000663e40f1fe0bc32a7e7282fac25de5fe8ecefd9c627e2fd948d388f7053`)
@@ -280,49 +299,49 @@ File: `pow.cpp`, `consensus/params.{h,cpp}`, `chainparams.cpp`.
   2-hour adjusted-time rule (`CheckBlockHeader`) and the MTP lower bound apply,
   matching the reference (Zcash 1.0.x).
 
-#### Historical block/tx sizes & the pre-checkpoint skip  ✅ DONE (verified by sync)
+#### Historical block/tx sizes — height-aware enforcement, FULL verification  ✅
 
 The modern base inherited `MAX_BLOCK_SIZE = 2000000` and
 `MAX_TX_SIZE_AFTER_SAPLING = MAX_BLOCK_SIZE`. Aligning the *constants* to ZCL
 (`200000` / `102000`) is correct, but the historical chain contains blocks and
 transactions that exceed those current limits, so a naïve enforcement aborts a
 sync from genesis (`CheckBlock(): size limits failed`, then
-`CheckTransaction … bad-txns-oversize`). Two complementary changes fix this:
+`CheckTransaction … bad-txns-oversize`).
 
-1. **Generous block-acceptance bound.** `CheckBlock` (and `LoadExternalBlockFile`,
-   the `-reindex`/`-loadblock` reader) use `GENEROUS_BLOCK_SIZE_LIMIT = 2000000`
-   instead of `MAX_BLOCK_SIZE`. `MAX_BLOCK_SIZE` keeps its standard-block role for
-   mining; the static_asserts (`MAX_BLOCK_SIZE > MAX_TX_SIZE_BEFORE_SAPLING`,
-   `MAX_BLOCK_SIZE >= MAX_TX_SIZE_AFTER_SAPLING`) still hold. Mirrors the
-   reference's `GENEROUS_BLOCK_SIZE_LIMIT` in `CheckBlock`.
+**Earlier (now reverted) approach.** A first cut made
+`-ibdskiptxverification` default **on** and skipped *all* transaction checks for
+blocks below the last checkpoint during IBD. That synced from genesis, but it
+**skipped verification** — which is unacceptable: it defeats the per-transaction
+binding-signature / value-balance checks that prevent counterfeiting of shielded
+value. It was reverted (`-ibdskiptxverification` is back to **off by default**,
+the upstream behaviour, and `ShouldCheckTransactions()` is back to the upstream
+ancestor-based form).
 
-2. **Skip structural tx checks below the last checkpoint during IBD.** The node
-   already skips the *expensive* crypto checks for pre-checkpoint blocks
-   (`ConnectBlock` disables `fExpensiveChecks` for ancestors of the last
-   checkpoint). The *cheap structural* checks (tx size, etc.) were gated behind
-   `-ibdskiptxverification`, which defaulted to **false** — so historical
-   over-size transactions were still rejected. Flip
-   `DEFAULT_IBD_SKIP_TX_VERIFICATION` to **true** so `ShouldCheckTransactions()`
-   skips the structural checks for pre-checkpoint blocks during IBD, consistent
-   with the expensive-check skip. Post-checkpoint (> `3126937`) blocks are still
-   fully verified; the skip is a no-op when checkpoints are disabled, and the
-   init guard only errors if `-ibdskiptxverification` is *explicitly* combined
-   with `-checkpoints=0`.
+**Current approach — generous up to Buttercup, strict after, always verified.**
+The size limit is chosen by **height** at the Buttercup boundary (707000 mainnet /
+78856 testnet), and *every* block is fully structurally and value-verified:
 
-   **Robustness (better than the reference).** Gate the skip on the highest
-   checkpoint **height** (`Checkpoints::GetTotalBlocksEstimate`, read from the
-   static checkpoint table) — **not** on `IsAncestorOfLastCheckpoint()`, which
-   requires the checkpoint *block* to already be in the index. During a genesis
-   sync an early block body can be connected before the highest checkpoint's
-   header has arrived; the ancestor test then returns false and current rules get
-   re-enforced on historical blocks, stalling the sync. This is the likely reason
-   the reference daemon itself fails to sync from genesis. The height-based gate
-   is timing-independent; the chain stays anchored by PoW and by the hardcoded
-   checkpoint hashes that must match when those heights are reached.
+1. **Generous historical ceiling.** `MAX_BLOCK_SIZE_BEFORE_BUTTERCUP = 2000000`
+   (2MB — original Zcash size and the P2P ceiling) is the non-contextual bound in
+   `CheckBlock`, `LoadExternalBlockFile`, and `CheckTransaction` (which has no
+   height). It only caps absurd/DoS sizes.
+2. **Strict, height-keyed enforcement.** From Buttercup onward,
+   `ContextualCheckBlock` enforces `MAX_BLOCK_SIZE` (200000) and
+   `ContextualCheckTransaction` enforces `MAX_TX_SIZE_AFTER_SAPLING` (102000).
+   Before Buttercup, those contextual checks allow the 2MB ceiling. The
+   historical over-limit transactions that broke a full-verification sync were
+   post-Sapling **but pre-Buttercup**, so Buttercup — not Sapling — is the
+   correct cutover for the size rule.
 
-   This pre-checkpoint skip is the **general** tolerance mechanism: it covers any
-   historical consensus variation below the last checkpoint (sizes and anything
-   else), so we do not have to special-case each diverging rule.
+Net effect: a from-genesis sync **fully verifies every block** (structure, value
+balances, turnstile accounting, and — for post-checkpoint blocks — proofs and
+signatures), while pre-Buttercup blocks/txs that legitimately exceed today's
+limits still validate. `MAX_BLOCK_SIZE` keeps its standard-block role for mining;
+the relevant static_asserts still hold. (The separate, pre-existing
+`fExpensiveChecks` checkpoint optimisation in `ConnectBlock` — skipping proof/
+signature re-verification *below* the last hardcoded checkpoint — is upstream
+Zcash behaviour and is unchanged; it is the standard "checkpoints vouch for old
+history" model and is independent of the size handling above.)
 
 ### Keeping Orchard / unified addresses / v5 dormant but enableable
 

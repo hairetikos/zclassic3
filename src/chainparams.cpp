@@ -242,11 +242,28 @@ public:
             1138            // * recent transactions/day (~1.0 tx/block, ~1138 blocks/day)
         };
 
-        // The Sprout value-pool and chain-supply checkpoints from upstream Zcash
-        // reference Zcash mainnet heights/balances and do not apply to Zclassic.
-        // ZIP 209 turnstile enforcement is left disabled on Zclassic mainnet, and
-        // the chain-supply checkpoint is left null so it is skipped.
-        fZIP209Enabled = false;
+        // ZIP 209 shielded value-pool turnstile.
+        //
+        // Enabled on Zclassic mainnet so that a full validation (a sync or
+        // `-reindex` from genesis) accumulates each shielded pool balance
+        // (Sprout/Sapling/Orchard/lockbox) and rejects any block that would drive
+        // a pool out of the valid monetary range — i.e. it detects counterfeiting
+        // of shielded value as an aggregate invariant, in addition to the
+        // per-transaction binding-signature/value-balance checks.
+        //
+        // No Sprout value-pool checkpoint is set (the upstream Zcash one
+        // references Zcash mainnet and does not apply here). None is needed for a
+        // from-genesis validation: nChainSproutValue is accumulated from 0 with
+        // full history, so it is always populated and the turnstile checks the
+        // running balance directly. (A node carrying legacy block-index data that
+        // predates Sprout value-pool tracking will be told to -reindex.)
+        //
+        // Note: this makes the node strictly enforce an invariant that the wider
+        // ZCL network (turnstile off) does not. On an honest chain it never fires;
+        // if it ever does, the node halts at that block — which is either a real
+        // discovery or legacy data needing a reindex. Validate with a full
+        // -reindex before relying on it. The chain-supply checkpoint is left null.
+        fZIP209Enabled = true;
 
         // Founders reward script expects a vector of 2-of-3 multisig addresses
         // (retained as vestigial data only; Zclassic never enforced or paid a

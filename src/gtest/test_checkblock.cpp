@@ -199,6 +199,54 @@ TEST_F(ContextualCheckBlockTest, BadCoinbaseHeight) {
     EXPECT_TRUE(ContextualCheckBlock(block, state, Params(), &indexPrev, true));
 }
 
+// Regression test for the Zclassic height-aware block size limit.
+//
+// The strict standard limit (MAX_BLOCK_SIZE) is enforced contextually from the
+// Buttercup upgrade onward; before Buttercup a generous historical ceiling
+// applies so that pre-Buttercup historical blocks larger than today's limit can
+// still be fully verified when syncing from genesis. An over-MAX_BLOCK_SIZE
+// block must therefore not be rejected for size before Buttercup, and must be
+// rejected ("bad-blk-length") at/after Buttercup. The size check runs at the top
+// of ContextualCheckBlock (before the coinbase/transaction checks), so we can use
+// fCheckTransactions=false and a block that is otherwise unchecked.
+TEST(ContextualCheckBlock, BlockSizeButtercupBoundary) {
+    SelectParams(CBaseChainParams::REGTEST);
+    UpdateNetworkUpgradeParameters(Consensus::UPGRADE_BUTTERCUP, 1);
+
+    // Build a block whose serialized size exceeds MAX_BLOCK_SIZE, cheaply, via a
+    // single large scriptSig push (the transaction itself is not validated here).
+    CMutableTransaction mtx;
+    mtx.vin.resize(1);
+    std::vector<unsigned char> big(MAX_BLOCK_SIZE + 1000, 0);
+    mtx.vin[0].scriptSig = CScript();
+    mtx.vin[0].scriptSig << big;
+    CBlock block;
+    block.vtx.push_back(CTransaction(mtx));
+    ASSERT_GT(::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION), (size_t)MAX_BLOCK_SIZE);
+
+    // Pre-Buttercup (height 0, indexPrev == NULL): the generous ceiling applies —
+    // the block is NOT rejected for size.
+    {
+        MockCValidationState state;
+        EXPECT_CALL(state, DoS(::testing::_, ::testing::_, ::testing::_,
+                               "bad-blk-length", ::testing::_, ::testing::_)).Times(0);
+        ContextualCheckBlock(block, state, Params(), NULL, false);
+    }
+
+    // Post-Buttercup (block height 1): the strict MAX_BLOCK_SIZE is enforced and
+    // the over-limit block is rejected as bad-blk-length (DoS 100).
+    {
+        CBlockIndex indexPrev {Params().GenesisBlock()};
+        indexPrev.nHeight = 0;
+        MockCValidationState state;
+        EXPECT_CALL(state, DoS(100, false, REJECT_INVALID, "bad-blk-length", false, "")).Times(1);
+        EXPECT_FALSE(ContextualCheckBlock(block, state, Params(), &indexPrev, false));
+    }
+
+    // Revert to default.
+    UpdateNetworkUpgradeParameters(Consensus::UPGRADE_BUTTERCUP, Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT);
+}
+
 // TEST PLAN: first, check that each ruleset accepts its own transaction type.
 // Currently (May 2018) this means we'll test Sprout-Sprout,
 // Overwinter-Overwinter, and Sapling-Sapling.

@@ -122,18 +122,31 @@ All values are MAINNET unless noted, taken from the ZCL reference.
   full structural and value verification of every block. See Phase 6.
 
 ### Shielded value-pool integrity (ZIP-209 turnstile)
-- The ZIP-209 turnstile (reject any block that drives a shielded value pool
-  negative — `turnstile-violation-*` in `ConnectBlock`) is **fully present** in
-  the code and is **enabled on testnet/regtest but disabled on mainnet**
-  (`fZIP209Enabled`), **exactly matching ZclassicCommunity/zclassic** (whose
-  mainnet also leaves it off; the `nSproutValuePoolCheckpoint` + ZIP-209 enable
-  live in its testnet params). So this is a faithful port, not a regression.
-- The core anti-counterfeiting guarantee does **not** depend on ZIP-209: every
-  shielded transaction's value balance is enforced by its **binding signature**
-  and per-pool accounting in `CheckTransaction`/`ConnectBlock`. ZIP-209 is an
-  additional aggregate safety net. Enabling it on mainnet would diverge from ZCL
-  and likely requires a vetted mainnet Sprout-pool checkpoint balance; treat it
-  as a separate, deliberate decision (tracked, not done here).
+- The ZIP-209 turnstile (reject any block that drives a shielded value pool out
+  of the valid monetary range — `turnstile-violation-*` in `ConnectBlock`) is
+  **fully present** and, as of the genesis-sync-integrity work, **enabled on
+  Zclassic mainnet** (`fZIP209Enabled = true`, also on testnet/regtest). This is
+  a deliberate divergence from ZclassicCommunity/zclassic (whose mainnet leaves
+  it off): with full from-genesis verification restored, a sync or `-reindex`
+  now accumulates each shielded pool balance (Sprout/Sapling/Orchard/lockbox)
+  from 0 and rejects any block that would make a pool negative — detecting
+  counterfeiting of shielded value as an aggregate invariant.
+- **No Sprout value-pool checkpoint is required.** The upstream
+  `nSproutValuePoolCheckpoint` mechanism exists for *snapshot* sync (where early
+  per-block Sprout deltas are absent); a full from-genesis validation accumulates
+  `nChainSproutValue` from 0 with complete history, so it is always populated and
+  the turnstile checks the running balance directly. (A node carrying legacy
+  block-index data predating Sprout value-pool tracking is told to `-reindex`.)
+- **Layering.** The core anti-counterfeiting guarantee is the per-transaction
+  **binding signature** + value-balance accounting in
+  `CheckTransaction`/`ConnectBlock` (fully active again now that the IBD
+  verification-skip is reverted). ZIP-209 is the additional *aggregate* safety
+  net on top.
+- **Operational caveat.** This makes the node strictly enforce an invariant the
+  wider ZCL network (turnstile off) does not. On an honest chain it never fires;
+  if it ever does, the node halts at that block — either a genuine discovery or
+  legacy data needing a reindex. Validate with a full `-reindex` from genesis
+  before relying on it.
 
 ### Anchors
 - checkpoints up to height `3126937` (`0x00000663e40f1fe0bc32a7e7282fac25de5fe8ecefd9c627e2fd948d388f7053`)

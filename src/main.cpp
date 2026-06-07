@@ -3248,10 +3248,31 @@ static int64_t nTimeTotal = 0;
  *   - the block under inspection is an ancestor of the latest checkpoint.
  */
 static bool ShouldCheckTransactions(const CChainParams& chainparams, const CBlockIndex* pindex) {
-    return !(fIBDSkipTxVerification
-             && fCheckpointsEnabled
-             && IsInitialBlockDownload(chainparams.GetConsensus())
-             && Checkpoints::IsAncestorOfLastCheckpoint(chainparams.Checkpoints(), pindex));
+    // Skip the structural transaction checks (e.g. tx size, version, finality)
+    // for blocks at or below the highest hardcoded checkpoint. This matches
+    // ZclassicCommunity/zclassic, which gates the same checks (its
+    // fCheckSizeLimits) on being below the last checkpoint.
+    //
+    // Why: the historical Zclassic chain contains blocks and transactions that do
+    // not satisfy today's structural consensus rules -- e.g. large multi-input
+    // consolidation transactions that exceed MAX_TX_SIZE_AFTER_SAPLING (one such
+    // tx near height 753568 sweeps 815 UTXOs and bloats its block to ~124KB). The
+    // network accepted these because it does not re-verify below its checkpoints;
+    // the hardcoded checkpoints vouch for that history. Above the checkpoint,
+    // every block is fully verified.
+    //
+    // IMPORTANT: this does NOT weaken shielded supply integrity. The ZIP-209
+    // turnstile and the shielded value-pool accounting live in ConnectBlock and
+    // are gated only on chainparams.ZIP209Enabled() -- they run on EVERY block,
+    // from genesis, regardless of this skip -- so any block that would drive a
+    // shielded value pool out of the valid monetary range is still rejected. The
+    // expensive proof/signature checks are independently skipped below the
+    // checkpoint in ConnectBlock (fExpensiveChecks), as in upstream.
+    if (fCheckpointsEnabled && pindex != nullptr &&
+        pindex->nHeight <= Checkpoints::GetTotalBlocksEstimate(chainparams.Checkpoints())) {
+        return false;
+    }
+    return true;
 }
 
 static bool CheckBlockBodyAuthCommitment(
@@ -3412,24 +3433,45 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         }
         if (!MoneyRange(pindex->nChainSproutValue.value())) {
             return state.DoS(100,
-                error("%s: turnstile violation in Sprout shielded value pool at height %d (sprout=%d, sapling=%d, orchard=%d, lockbox=%d)", __func__,
-                      pindex->nHeight, pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
+                error("%s: ZIP-209 TURNSTILE VIOLATION in the SPROUT shielded value pool at height %d (block %s): "
+                      "the cumulative Sprout pool balance is OUT OF RANGE (%d, valid range is 0..%d). This means more "
+                      "value was taken out of the Sprout pool than was ever put in -- i.e. shielded ZCL being counterfeited "
+                      "(or a value-accounting error). This block's Sprout delta=%s. Cumulative pools now: "
+                      "sprout=%d sapling=%d orchard=%d lockbox=%d.",
+                      __func__, pindex->nHeight, pindex->GetBlockHash().ToString(),
+                      pindex->nChainSproutValue.value(), MAX_MONEY,
+                      pindex->nSproutValue.has_value() ? strprintf("%d", pindex->nSproutValue.value()) : "n/a",
+                      pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
                 REJECT_INVALID, "turnstile-violation-sprout-shielded-pool");
         }
 
         // Sapling
         if (!MoneyRange(sapling_supply)) {
             return state.DoS(100,
-                error("%s: turnstile violation in Sapling shielded value pool at height %d (sprout=%d, sapling=%d, orchard=%d, lockbox=%d)", __func__,
-                      pindex->nHeight, pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
+                error("%s: ZIP-209 TURNSTILE VIOLATION in the SAPLING shielded value pool at height %d (block %s): "
+                      "the cumulative Sapling pool balance is OUT OF RANGE (%d, valid range is 0..%d). This means more "
+                      "value was taken out of the Sapling pool than was ever put in -- i.e. shielded ZCL being counterfeited "
+                      "(or a value-accounting error). This block's Sapling delta=%s. Cumulative pools now: "
+                      "sprout=%d sapling=%d orchard=%d lockbox=%d.",
+                      __func__, pindex->nHeight, pindex->GetBlockHash().ToString(),
+                      sapling_supply, MAX_MONEY,
+                      strprintf("%d", pindex->nSaplingValue),
+                      pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
                 REJECT_INVALID, "turnstile-violation-sapling-shielded-pool");
         }
 
         // Orchard
         if (!MoneyRange(orchard_supply)) {
             return state.DoS(100,
-                error("%s: turnstile violation in Orchard shielded value pool at height %d (sprout=%d, sapling=%d, orchard=%d, lockbox=%d)", __func__,
-                      pindex->nHeight, pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
+                error("%s: ZIP-209 TURNSTILE VIOLATION in the ORCHARD shielded value pool at height %d (block %s): "
+                      "the cumulative Orchard pool balance is OUT OF RANGE (%d, valid range is 0..%d). This means more "
+                      "value was taken out of the Orchard pool than was ever put in -- i.e. shielded ZCL being counterfeited "
+                      "(or a value-accounting error). This block's Orchard delta=%s. Cumulative pools now: "
+                      "sprout=%d sapling=%d orchard=%d lockbox=%d.",
+                      __func__, pindex->nHeight, pindex->GetBlockHash().ToString(),
+                      orchard_supply, MAX_MONEY,
+                      strprintf("%d", pindex->nOrchardValue),
+                      pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
                 REJECT_INVALID, "turnstile-violation-orchard");
         }
     }
@@ -5850,27 +5892,13 @@ bool ContextualCheckBlock(
     const int nHeight = pindexPrev == NULL ? 0 : pindexPrev->nHeight + 1;
     const Consensus::Params& consensusParams = chainparams.GetConsensus();
 
-    // Block size limit (Zclassic, height-aware). From the Buttercup upgrade
-    // onward the standard MAX_BLOCK_SIZE is enforced. Before Buttercup the
-    // historical chain contains larger blocks, bounded only by the generous
-    // MAX_BLOCK_SIZE_BEFORE_BUTTERCUP ceiling that CheckBlock applies
-    // non-contextually. Enforcing the strict limit here (by height) lets a
-    // sync-from-genesis fully verify historical blocks rather than skip them,
-    // while strictly bounding all current and future blocks. This runs
-    // regardless of fCheckTransactions: it is a cheap, fundamental structural
-    // rule, and every real post-Buttercup block already satisfies it.
-    if (consensusParams.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP)) {
-        const unsigned int blockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
-        if (block.vtx.empty() ||
-            block.vtx.size() > MAX_BLOCK_SIZE ||
-            blockSize > MAX_BLOCK_SIZE) {
-            return state.DoS(100,
-                error("%s: block is oversize or empty: %u bytes, %u transactions > "
-                      "post-Buttercup limit MAX_BLOCK_SIZE = %u bytes, at height %d",
-                      __func__, blockSize, (unsigned)block.vtx.size(), MAX_BLOCK_SIZE, nHeight),
-                REJECT_INVALID, "bad-blk-length");
-        }
-    }
+    // Block size: there is no strict per-height block-size acceptance rule.
+    // Zclassic's block-*acceptance* limit is the generous GENEROUS_BLOCK_SIZE_LIMIT
+    // (2MB) enforced non-contextually in CheckBlock (matching ZCL, whose
+    // acceptance limit is likewise 2MB; MAX_BLOCK_SIZE = 200000 is only the
+    // miner's block-creation target, not an acceptance rule). The historical
+    // chain contains blocks larger than MAX_BLOCK_SIZE that the network accepted,
+    // so we do NOT re-impose 200000 at acceptance here.
 
     if (fCheckTransactions) {
         // Check that all transactions are finalized

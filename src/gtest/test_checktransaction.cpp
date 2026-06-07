@@ -198,13 +198,19 @@ TEST(ChecktransactionTests, BadTxnsOversize) {
         CTransaction tx(mtx);
         ASSERT_EQ(::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION), 100202);
 
-        // Passes non-contextual checks...
+        // Passes non-contextual checks (the non-contextual ceiling is now the
+        // generous MAX_BLOCK_SIZE_BEFORE_BUTTERCUP, 2MB)...
         MockCValidationState state;
         EXPECT_TRUE(CheckTransactionWithoutProofVerification(tx, state));
 
-        // ... but fails contextual ones!
-        EXPECT_CALL(state, DoS(100, false, REJECT_INVALID, "bad-txns-oversize", false, "")).Times(1);
-        EXPECT_FALSE(ContextualCheckTransaction(tx, state, Params(), 1, true));
+        // ... and also passes contextual checks at this PRE-Buttercup height:
+        // the strict transaction size limit is only enforced from the Buttercup
+        // upgrade onward (Zclassic), so the generous historical ceiling applies
+        // here. (The strict post-Buttercup enforcement is covered by
+        // ChecktransactionTests.TxSizeButtercupBoundary.)
+        EXPECT_CALL(state, DoS(::testing::_, ::testing::_, ::testing::_,
+                               "bad-txns-oversize", ::testing::_, ::testing::_)).Times(0);
+        EXPECT_TRUE(ContextualCheckTransaction(tx, state, Params(), 1, true));
     }
 
     {

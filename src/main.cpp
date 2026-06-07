@@ -1009,14 +1009,21 @@ bool ContextualCheckTransaction(
     // full-verification genesis sync were post-Sapling but pre-Buttercup, so the
     // cutover that matters for the size rule is Buttercup, not Sapling.
     static_assert(MAX_BLOCK_SIZE_BEFORE_BUTTERCUP > MAX_TX_SIZE_AFTER_SAPLING); // sanity
+    const bool buttercupActive =
+        consensus.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP);
     const unsigned int maxTxSize =
-        consensus.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP)
-            ? MAX_TX_SIZE_AFTER_SAPLING
-            : MAX_BLOCK_SIZE_BEFORE_BUTTERCUP;
-    if (::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) > maxTxSize)
+        buttercupActive ? MAX_TX_SIZE_AFTER_SAPLING : MAX_BLOCK_SIZE_BEFORE_BUTTERCUP;
+    const unsigned int txSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
+    if (txSize > maxTxSize)
         return state.DoS(
             dosLevelPotentiallyRelaxing,
-            error("ContextualCheckTransaction(): size limits failed"),
+            error("ContextualCheckTransaction(): transaction is oversize: %u bytes > limit %u "
+                  "at height %d (%s); txid=%s",
+                  txSize, maxTxSize, nHeight,
+                  buttercupActive
+                      ? "post-Buttercup standard limit MAX_TX_SIZE_AFTER_SAPLING"
+                      : "pre-Buttercup generous limit MAX_BLOCK_SIZE_BEFORE_BUTTERCUP",
+                  tx.GetHash().ToString()),
             REJECT_INVALID, "bad-txns-oversize");
 
     // From Canopy onward, coinbase transaction must include outputs corresponding to the
@@ -1556,8 +1563,16 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
     static_assert(MAX_BLOCK_SIZE >= MAX_TX_SIZE_AFTER_SAPLING); // sanity
     static_assert(MAX_TX_SIZE_AFTER_SAPLING > MAX_TX_SIZE_BEFORE_SAPLING); // sanity
     static_assert(MAX_BLOCK_SIZE_BEFORE_BUTTERCUP >= MAX_TX_SIZE_AFTER_SAPLING); // sanity
-    if (::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE_BEFORE_BUTTERCUP)
-        return state.DoS(100, false, REJECT_INVALID, "bad-txns-oversize");
+    {
+        const unsigned int txSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
+        if (txSize > MAX_BLOCK_SIZE_BEFORE_BUTTERCUP)
+            return state.DoS(100,
+                error("CheckTransaction(): transaction is oversize: %u bytes > absolute ceiling %u "
+                      "(MAX_BLOCK_SIZE_BEFORE_BUTTERCUP); the per-height limit is enforced in "
+                      "ContextualCheckTransaction; txid=%s",
+                      txSize, MAX_BLOCK_SIZE_BEFORE_BUTTERCUP, tx.GetHash().ToString()),
+                REJECT_INVALID, "bad-txns-oversize");
+    }
 
     // Check for negative or overflow output values
     CAmount nValueOut = 0;
@@ -5717,9 +5732,15 @@ bool CheckBlock(const CBlock& block,
     // Size limits (see GENEROUS_BLOCK_SIZE_LIMIT above): block acceptance uses
     // the generous 2MB bound, not MAX_BLOCK_SIZE, so historical over-standard
     // blocks validate when syncing from genesis.
-    if (block.vtx.empty() || block.vtx.size() > GENEROUS_BLOCK_SIZE_LIMIT || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION) > GENEROUS_BLOCK_SIZE_LIMIT)
-        return state.DoS(100, error("CheckBlock(): size limits failed"),
-                         REJECT_INVALID, "bad-blk-length");
+    {
+        const unsigned int blockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
+        if (block.vtx.empty() || block.vtx.size() > GENEROUS_BLOCK_SIZE_LIMIT || blockSize > GENEROUS_BLOCK_SIZE_LIMIT)
+            return state.DoS(100,
+                error("CheckBlock(): block is oversize or empty: %u bytes, %u transactions "
+                      "(absolute ceiling GENEROUS_BLOCK_SIZE_LIMIT = %u bytes)",
+                      blockSize, (unsigned)block.vtx.size(), GENEROUS_BLOCK_SIZE_LIMIT),
+                REJECT_INVALID, "bad-blk-length");
+    }
 
     // First transaction must be coinbase, the rest must not be
     if (block.vtx.empty() || !block.vtx[0].IsCoinBase())
@@ -5839,11 +5860,15 @@ bool ContextualCheckBlock(
     // regardless of fCheckTransactions: it is a cheap, fundamental structural
     // rule, and every real post-Buttercup block already satisfies it.
     if (consensusParams.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP)) {
+        const unsigned int blockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
         if (block.vtx.empty() ||
             block.vtx.size() > MAX_BLOCK_SIZE ||
-            ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE) {
-            return state.DoS(100, error("%s: size limits failed (post-Buttercup)", __func__),
-                             REJECT_INVALID, "bad-blk-length");
+            blockSize > MAX_BLOCK_SIZE) {
+            return state.DoS(100,
+                error("%s: block is oversize or empty: %u bytes, %u transactions > "
+                      "post-Buttercup limit MAX_BLOCK_SIZE = %u bytes, at height %d",
+                      __func__, blockSize, (unsigned)block.vtx.size(), MAX_BLOCK_SIZE, nHeight),
+                REJECT_INVALID, "bad-blk-length");
         }
     }
 

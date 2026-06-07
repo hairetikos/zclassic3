@@ -340,7 +340,7 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-datadir=<dir>", _("Specify data directory (this path cannot use '~')"));
     strUsage += HelpMessageOpt("-paramsdir=<dir>", _("Specify Zclassic network parameters directory"));
     strUsage += HelpMessageOpt("-dbcache=<n>", strprintf(_("Set database cache size in megabytes (%d to %d, default: %d)"), nMinDbCache, nMaxDbCache, nDefaultDbCache));
-    strUsage += HelpMessageOpt("-debuglog", strprintf(_("Write a debug log file to disk (default: %u = disabled). When disabled, no log is written and (unless -printtoconsole is set) no log output is produced. Use -debuglogfile to choose the file location."), DEFAULT_DEBUGLOG));
+    strUsage += HelpMessageOpt("-debuglog", strprintf(_("Write a debug log file to disk (default: %u = disabled). Must be set explicitly to enable the file; when set it always writes the file, taking precedence over -printtoconsole. When disabled (the default), no log file is written and (unless -printtoconsole is set) no log output is produced at all. Use -debuglogfile to choose the file location."), DEFAULT_DEBUGLOG));
     strUsage += HelpMessageOpt("-debuglogfile=<file>", strprintf(_("When -debuglog is enabled, specify the location of the debug log file. Relative paths will be prefixed by a net-specific datadir location. This is a path, not an on/off switch — use -debuglog to enable/disable. (default: %s)"), DEFAULT_DEBUGLOGFILE));
     strUsage += HelpMessageOpt("-exportdir=<dir>", _("Specify directory to be used when exporting data"));
     strUsage += HelpMessageOpt("-ibdskiptxverification", strprintf(_("Skip transaction verification during initial block download up to the last checkpoint height. Incompatible with flags that disable checkpoints. (default = %u)"), DEFAULT_IBD_SKIP_TX_VERIFICATION));
@@ -989,13 +989,16 @@ void InitLogging()
                     "native path has unexpected code unit size");
     const codeunit* pathDebugCStr = nullptr;
     size_t pathDebugLen = 0;
-    if (fPrintToConsole) {
-        // Console logging: a null path makes the tracing layer log to stdout;
-        // no debug log file is written.
-    } else if (fLogToFile) {
-        // File logging enabled: write to the -debuglogfile path.
+    if (fLogToFile) {
+        // -debuglog=1: ALWAYS write the debug log file when explicitly enabled,
+        // regardless of -printtoconsole. The tracing layer writes to a single
+        // sink, so an explicitly requested file takes precedence over console
+        // output (which is then suppressed). The file path is -debuglogfile.
         pathDebugCStr = reinterpret_cast<const codeunit*>(pathDebugStr.c_str());
         pathDebugLen = pathDebugStr.length();
+    } else if (fPrintToConsole) {
+        // -printtoconsole (and -debuglog not set): a null path makes the tracing
+        // layer log to stdout; no debug log file is written.
     } else {
         // Default: logging disabled. No file is written, and we silence the
         // filter so nothing is emitted to stdout either (a null path would

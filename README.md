@@ -43,9 +43,15 @@ What's new in 3.0
   triple-halving). Branch IDs, block reward, difficulty, and block/transaction
   size rules all match the existing network. See
   [`doc/zclassicd-port-plan.md`](doc/zclassicd-port-plan.md).
-- **Sync-from-genesis hardening.** Tolerates the historical chain's consensus
-  variations (e.g. over-standard block/tx sizes) below the last checkpoint, so a
-  brand-new node can validate the whole chain from block 0.
+- **Sync-from-genesis with the ZIP-209 turnstile active.** Structural/expensive
+  transaction checks for blocks at or below the last hardcoded checkpoint are
+  skipped (as in upstream Zclassic — the historical chain contains blocks/txs,
+  e.g. large consolidation transactions, that predate today's standard limits);
+  above the checkpoint every block is fully verified. Crucially, the **ZIP-209
+  shielded value-pool turnstile is enabled on mainnet and runs on every block
+  from genesis** (it is independent of that skip), so shielded ZCL cannot be
+  counterfeited: any block that would drive a value pool out of range is
+  rejected.
 - **Zclassic branding** throughout: the binaries are `zclassicd`, `zclassic-cli`,
   and `zclassic-tx`.
 

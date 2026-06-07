@@ -340,7 +340,8 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-datadir=<dir>", _("Specify data directory (this path cannot use '~')"));
     strUsage += HelpMessageOpt("-paramsdir=<dir>", _("Specify Zclassic network parameters directory"));
     strUsage += HelpMessageOpt("-dbcache=<n>", strprintf(_("Set database cache size in megabytes (%d to %d, default: %d)"), nMinDbCache, nMaxDbCache, nDefaultDbCache));
-    strUsage += HelpMessageOpt("-debuglogfile=<file>", strprintf(_("Specify location of debug log file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)"), DEFAULT_DEBUGLOGFILE));
+    strUsage += HelpMessageOpt("-debuglog", strprintf(_("Write a debug log file to disk (default: %u = disabled). Must be set explicitly to enable the file; when set it always writes the file, taking precedence over -printtoconsole. When disabled (the default), no log file is written and (unless -printtoconsole is set) no log output is produced at all. Use -debuglogfile to choose the file location."), DEFAULT_DEBUGLOG));
+    strUsage += HelpMessageOpt("-debuglogfile=<file>", strprintf(_("When -debuglog is enabled, specify the location of the debug log file. Relative paths will be prefixed by a net-specific datadir location. This is a path, not an on/off switch — use -debuglog to enable/disable. (default: %s)"), DEFAULT_DEBUGLOGFILE));
     strUsage += HelpMessageOpt("-exportdir=<dir>", _("Specify directory to be used when exporting data"));
     strUsage += HelpMessageOpt("-ibdskiptxverification", strprintf(_("Skip transaction verification during initial block download up to the last checkpoint height. Incompatible with flags that disable checkpoints. (default = %u)"), DEFAULT_IBD_SKIP_TX_VERIFICATION));
     strUsage += HelpMessageOpt("-loadblock=<file>", _("Imports blocks from external blk000??.dat file on startup"));
@@ -971,6 +972,14 @@ void InitLogging()
     fLogTimestamps = GetBoolArg("-logtimestamps", DEFAULT_LOGTIMESTAMPS);
     fLogIPs = GetBoolArg("-logips", DEFAULT_LOGIPS);
 
+    // Zclassic: the on-disk debug log is OPT-IN. By default no debug.log is
+    // written to disk (privacy). Enable it with -debuglog=1. The inherited
+    // upstream -debuglogfile=<path> still selects WHERE the file is written when
+    // logging is enabled; it is a path, not an on/off switch (so a stray
+    // `debuglogfile=1` would create a file literally named "1", which is why the
+    // on/off control is the separate -debuglog option).
+    bool fLogToFile = GetBoolArg("-debuglog", DEFAULT_DEBUGLOG);
+
     // Set up the initial filtering directive from the -debug flags.
     std::string initialFilter = LogConfigFilter();
 
@@ -980,9 +989,22 @@ void InitLogging()
                     "native path has unexpected code unit size");
     const codeunit* pathDebugCStr = nullptr;
     size_t pathDebugLen = 0;
-    if (!fPrintToConsole) {
+    if (fLogToFile) {
+        // -debuglog=1: ALWAYS write the debug log file when explicitly enabled,
+        // regardless of -printtoconsole. The tracing layer writes to a single
+        // sink, so an explicitly requested file takes precedence over console
+        // output (which is then suppressed). The file path is -debuglogfile.
         pathDebugCStr = reinterpret_cast<const codeunit*>(pathDebugStr.c_str());
         pathDebugLen = pathDebugStr.length();
+    } else if (fPrintToConsole) {
+        // -printtoconsole (and -debuglog not set): a null path makes the tracing
+        // layer log to stdout; no debug log file is written.
+    } else {
+        // Default: logging disabled. No file is written, and we silence the
+        // filter so nothing is emitted to stdout either (a null path would
+        // otherwise route to stdout and disturb the foreground metrics screen).
+        // Enable logging with -debuglog=1 (file) or -printtoconsole (console).
+        initialFilter = "off";
     }
 
     pTracingHandle = tracing_init(
@@ -1104,13 +1126,9 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     if (nMaxConnections < nUserMaxConnections)
         InitWarning(strprintf(_("Reducing -maxconnections from %d to %d, because of system limitations."), nUserMaxConnections, nMaxConnections));
 
-    // ensure that the user has not disabled checkpoints when *explicitly*
-    // requesting to skip transaction verification in initial block download.
-    // (This skip now defaults to on for Zclassic; when it is merely the default
-    // and the user disables checkpoints, it silently becomes a no-op rather than
-    // an error — ShouldCheckTransactions() also gates on checkpoints being on.)
-    if (mapArgs.count("-ibdskiptxverification") &&
-        GetBoolArg("-ibdskiptxverification", DEFAULT_IBD_SKIP_TX_VERIFICATION)) {
+    // ensure that the user has not disabled checkpoints when requesting to
+    // skip transaction verification in initial block download.
+    if (GetBoolArg("-ibdskiptxverification", DEFAULT_IBD_SKIP_TX_VERIFICATION)) {
         if (!GetBoolArg("-checkpoints", DEFAULT_CHECKPOINTS_ENABLED)) {
             return InitError(_("-ibdskiptxverification requires checkpoints to be enabled; it is incompatible with flags that disable checkpoints"));
         }

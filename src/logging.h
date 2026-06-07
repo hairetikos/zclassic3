@@ -18,6 +18,9 @@
 static const bool DEFAULT_LOGTIMEMICROS = false;
 static const bool DEFAULT_LOGIPS        = false;
 static const bool DEFAULT_LOGTIMESTAMPS = true;
+//! Zclassic: the on-disk debug log is opt-in (off by default) for privacy —
+//! enable it with -debuglog. (-debuglogfile only selects the path when enabled.)
+static const bool DEFAULT_DEBUGLOG      = false;
 extern const char * const DEFAULT_DEBUGLOGFILE;
 
 extern bool fPrintToConsole;

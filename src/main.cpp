@@ -991,19 +991,40 @@ bool ContextualCheckTransaction(
                     REJECT_INVALID, "bad-sapling-tx-version-group-id");
             }
         }
-    } else {
-        // Rules that apply generally before Sapling. These were
-        // previously noncontextual checks that became contextual
-        // after Sapling activation.
-
-        // Reject transactions that exceed pre-sapling size limits
-        static_assert(MAX_BLOCK_SIZE > MAX_TX_SIZE_BEFORE_SAPLING); // sanity
-        if (::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) > MAX_TX_SIZE_BEFORE_SAPLING)
-            return state.DoS(
-                dosLevelPotentiallyRelaxing,
-                error("ContextualCheckTransaction(): size limits failed"),
-                REJECT_INVALID, "bad-txns-oversize");
     }
+
+    // Transaction size limit (Zclassic, height-aware).
+    //
+    // From the Buttercup upgrade onward we enforce the current standard limit
+    // (MAX_TX_SIZE_AFTER_SAPLING). Before Buttercup the historical Zclassic chain
+    // contains transactions larger than today's limits (the early chain used the
+    // 2 MB Zcash limit and did not enforce the smaller ones), so only the
+    // generous historical ceiling (MAX_BLOCK_SIZE_BEFORE_BUTTERCUP) applies there.
+    // This is what lets a sync from genesis fully verify (rather than skip) those
+    // historical transactions while strictly bounding all current/future ones.
+    //
+    // This replaces the former Sapling-keyed split (pre-Sapling
+    // MAX_TX_SIZE_BEFORE_SAPLING / post-Sapling MAX_TX_SIZE_AFTER_SAPLING checked
+    // non-contextually): the historical over-limit transactions that broke a
+    // full-verification genesis sync were post-Sapling but pre-Buttercup, so the
+    // cutover that matters for the size rule is Buttercup, not Sapling.
+    static_assert(MAX_BLOCK_SIZE_BEFORE_BUTTERCUP > MAX_TX_SIZE_AFTER_SAPLING); // sanity
+    const bool buttercupActive =
+        consensus.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_BUTTERCUP);
+    const unsigned int maxTxSize =
+        buttercupActive ? MAX_TX_SIZE_AFTER_SAPLING : MAX_BLOCK_SIZE_BEFORE_BUTTERCUP;
+    const unsigned int txSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
+    if (txSize > maxTxSize)
+        return state.DoS(
+            dosLevelPotentiallyRelaxing,
+            error("ContextualCheckTransaction(): transaction is oversize: %u bytes > limit %u "
+                  "at height %d (%s); txid=%s",
+                  txSize, maxTxSize, nHeight,
+                  buttercupActive
+                      ? "post-Buttercup standard limit MAX_TX_SIZE_AFTER_SAPLING"
+                      : "pre-Buttercup generous limit MAX_BLOCK_SIZE_BEFORE_BUTTERCUP",
+                  tx.GetHash().ToString()),
+            REJECT_INVALID, "bad-txns-oversize");
 
     // From Canopy onward, coinbase transaction must include outputs corresponding to the
     // ZIP 207 consensus funding streams active at the current block height. To avoid
@@ -1530,11 +1551,28 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
         return state.DoS(10, false, REJECT_INVALID, "bad-txns-no-sink-of-funds");
     }
 
-    // Size limits
+    // Size limits.
+    // This non-contextual check applies the generous historical ceiling
+    // (MAX_BLOCK_SIZE_BEFORE_BUTTERCUP) as a sanity / DoS bound only, because the
+    // block height is not known here. The strict, era-appropriate transaction
+    // size limit (MAX_TX_SIZE_AFTER_SAPLING, from the Buttercup upgrade onward) is
+    // enforced contextually in ContextualCheckTransaction. This lets historical
+    // pre-Buttercup transactions that exceed today's limit be fully verified
+    // (rather than skipped) when syncing from genesis, while still strictly
+    // bounding all current and future transactions.
     static_assert(MAX_BLOCK_SIZE >= MAX_TX_SIZE_AFTER_SAPLING); // sanity
     static_assert(MAX_TX_SIZE_AFTER_SAPLING > MAX_TX_SIZE_BEFORE_SAPLING); // sanity
-    if (::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) > MAX_TX_SIZE_AFTER_SAPLING)
-        return state.DoS(100, false, REJECT_INVALID, "bad-txns-oversize");
+    static_assert(MAX_BLOCK_SIZE_BEFORE_BUTTERCUP >= MAX_TX_SIZE_AFTER_SAPLING); // sanity
+    {
+        const unsigned int txSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
+        if (txSize > MAX_BLOCK_SIZE_BEFORE_BUTTERCUP)
+            return state.DoS(100,
+                error("CheckTransaction(): transaction is oversize: %u bytes > absolute ceiling %u "
+                      "(MAX_BLOCK_SIZE_BEFORE_BUTTERCUP); the per-height limit is enforced in "
+                      "ContextualCheckTransaction; txid=%s",
+                      txSize, MAX_BLOCK_SIZE_BEFORE_BUTTERCUP, tx.GetHash().ToString()),
+                REJECT_INVALID, "bad-txns-oversize");
+    }
 
     // Check for negative or overflow output values
     CAmount nValueOut = 0;
@@ -1761,6 +1799,23 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
         if (orchard_bundle.SpendsEnabled())
             return state.DoS(100, error("CheckTransaction(): coinbase has enableSpendsOrchard set"),
                              REJECT_INVALID, "bad-cb-has-orchard-spend");
+
+        // A coinbase transaction has no Sapling spends or spend-enabled Orchard
+        // actions (rejected above), so its shielded value balance is the negation
+        // of the value of its shielded outputs and cannot be positive. A positive
+        // value balance would be unsatisfiable by the binding signature, hence
+        // always invalid (independently of the NU6 exact-coinbase-balance rule).
+        // Rejecting it here, rather than only via the binding-signature check in
+        // ConnectBlock, prevents a malformed coinbase from reaching the chain
+        // supply consistency check with inconsistent pool accounting, which would
+        // otherwise call AbortNode (a remotely-triggerable crash/crash-loop).
+        // Addresses GHSA-g4x5-crjh-29ff.
+        if (tx.GetValueBalanceSapling() > 0)
+            return state.DoS(100, error("CheckTransaction(): coinbase has positive Sapling value balance"),
+                             REJECT_INVALID, "bad-cb-positive-sapling-valuebalance");
+        if (orchard_bundle.GetValueBalance() > 0)
+            return state.DoS(100, error("CheckTransaction(): coinbase has positive Orchard value balance"),
+                             REJECT_INVALID, "bad-cb-positive-orchard-valuebalance");
 
         if (tx.vin[0].scriptSig.size() < 2 || tx.vin[0].scriptSig.size() > 100)
             return state.DoS(100, false, REJECT_INVALID, "bad-cb-length");
@@ -3193,26 +3248,31 @@ static int64_t nTimeTotal = 0;
  *   - the block under inspection is an ancestor of the latest checkpoint.
  */
 static bool ShouldCheckTransactions(const CChainParams& chainparams, const CBlockIndex* pindex) {
-    // Skip the (cheap, structural) transaction checks for blocks at or below the
-    // highest hardcoded checkpoint height while still in initial block download.
+    // Skip the structural transaction checks (e.g. tx size, version, finality)
+    // for blocks at or below the highest hardcoded checkpoint. This matches
+    // ZclassicCommunity/zclassic, which gates the same checks (its
+    // fCheckSizeLimits) on being below the last checkpoint.
     //
-    // We gate on the checkpoint *height* (GetTotalBlocksEstimate) rather than
-    // Checkpoints::IsAncestorOfLastCheckpoint(): the latter requires the
-    // checkpoint *block* to already be in the block index, which is not
-    // guaranteed during a sync from genesis (an early block body can be connected
-    // before the header for the highest checkpoint has been received). When that
-    // happens the ancestor test fails and we would wrongly re-enforce current
-    // consensus rules (e.g. tx size limits) on historical blocks that predate
-    // them — which is exactly what stalls a genesis sync. The chain is still
-    // anchored: blocks must connect by proof-of-work and must match the hardcoded
-    // checkpoint hashes when those heights are reached, so trusting pre-checkpoint
-    // history by height during IBD is safe. Expensive checks (proofs/signatures/
-    // scripts) are gated separately in ConnectBlock.
-    return !(fIBDSkipTxVerification
-             && fCheckpointsEnabled
-             && pindex != nullptr
-             && IsInitialBlockDownload(chainparams.GetConsensus())
-             && pindex->nHeight <= Checkpoints::GetTotalBlocksEstimate(chainparams.Checkpoints()));
+    // Why: the historical Zclassic chain contains blocks and transactions that do
+    // not satisfy today's structural consensus rules -- e.g. large multi-input
+    // consolidation transactions that exceed MAX_TX_SIZE_AFTER_SAPLING (one such
+    // tx near height 753568 sweeps 815 UTXOs and bloats its block to ~124KB). The
+    // network accepted these because it does not re-verify below its checkpoints;
+    // the hardcoded checkpoints vouch for that history. Above the checkpoint,
+    // every block is fully verified.
+    //
+    // IMPORTANT: this does NOT weaken shielded supply integrity. The ZIP-209
+    // turnstile and the shielded value-pool accounting live in ConnectBlock and
+    // are gated only on chainparams.ZIP209Enabled() -- they run on EVERY block,
+    // from genesis, regardless of this skip -- so any block that would drive a
+    // shielded value pool out of the valid monetary range is still rejected. The
+    // expensive proof/signature checks are independently skipped below the
+    // checkpoint in ConnectBlock (fExpensiveChecks), as in upstream.
+    if (fCheckpointsEnabled && pindex != nullptr &&
+        pindex->nHeight <= Checkpoints::GetTotalBlocksEstimate(chainparams.Checkpoints())) {
+        return false;
+    }
+    return true;
 }
 
 static bool CheckBlockBodyAuthCommitment(
@@ -3373,24 +3433,45 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         }
         if (!MoneyRange(pindex->nChainSproutValue.value())) {
             return state.DoS(100,
-                error("%s: turnstile violation in Sprout shielded value pool at height %d (sprout=%d, sapling=%d, orchard=%d, lockbox=%d)", __func__,
-                      pindex->nHeight, pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
+                error("%s: ZIP-209 TURNSTILE VIOLATION in the SPROUT shielded value pool at height %d (block %s): "
+                      "the cumulative Sprout pool balance is OUT OF RANGE (%d, valid range is 0..%d). This means more "
+                      "value was taken out of the Sprout pool than was ever put in -- i.e. shielded ZCL being counterfeited "
+                      "(or a value-accounting error). This block's Sprout delta=%s. Cumulative pools now: "
+                      "sprout=%d sapling=%d orchard=%d lockbox=%d.",
+                      __func__, pindex->nHeight, pindex->GetBlockHash().ToString(),
+                      pindex->nChainSproutValue.value(), MAX_MONEY,
+                      pindex->nSproutValue.has_value() ? strprintf("%d", pindex->nSproutValue.value()) : "n/a",
+                      pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
                 REJECT_INVALID, "turnstile-violation-sprout-shielded-pool");
         }
 
         // Sapling
         if (!MoneyRange(sapling_supply)) {
             return state.DoS(100,
-                error("%s: turnstile violation in Sapling shielded value pool at height %d (sprout=%d, sapling=%d, orchard=%d, lockbox=%d)", __func__,
-                      pindex->nHeight, pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
+                error("%s: ZIP-209 TURNSTILE VIOLATION in the SAPLING shielded value pool at height %d (block %s): "
+                      "the cumulative Sapling pool balance is OUT OF RANGE (%d, valid range is 0..%d). This means more "
+                      "value was taken out of the Sapling pool than was ever put in -- i.e. shielded ZCL being counterfeited "
+                      "(or a value-accounting error). This block's Sapling delta=%s. Cumulative pools now: "
+                      "sprout=%d sapling=%d orchard=%d lockbox=%d.",
+                      __func__, pindex->nHeight, pindex->GetBlockHash().ToString(),
+                      sapling_supply, MAX_MONEY,
+                      strprintf("%d", pindex->nSaplingValue),
+                      pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
                 REJECT_INVALID, "turnstile-violation-sapling-shielded-pool");
         }
 
         // Orchard
         if (!MoneyRange(orchard_supply)) {
             return state.DoS(100,
-                error("%s: turnstile violation in Orchard shielded value pool at height %d (sprout=%d, sapling=%d, orchard=%d, lockbox=%d)", __func__,
-                      pindex->nHeight, pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
+                error("%s: ZIP-209 TURNSTILE VIOLATION in the ORCHARD shielded value pool at height %d (block %s): "
+                      "the cumulative Orchard pool balance is OUT OF RANGE (%d, valid range is 0..%d). This means more "
+                      "value was taken out of the Orchard pool than was ever put in -- i.e. shielded ZCL being counterfeited "
+                      "(or a value-accounting error). This block's Orchard delta=%s. Cumulative pools now: "
+                      "sprout=%d sapling=%d orchard=%d lockbox=%d.",
+                      __func__, pindex->nHeight, pindex->GetBlockHash().ToString(),
+                      orchard_supply, MAX_MONEY,
+                      strprintf("%d", pindex->nOrchardValue),
+                      pindex->nChainSproutValue.value(), sapling_supply, orchard_supply, lockbox_supply),
                 REJECT_INVALID, "turnstile-violation-orchard");
         }
     }
@@ -3787,6 +3868,31 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     view.PushAnchor(sprout_tree);
     view.PushAnchor(sapling_tree);
     view.PushAnchor(orchard_tree);
+
+    // Validate the Sapling and Orchard binding signatures here, before the
+    // chain supply consistency check below. The binding signatures are what
+    // enforce that each bundle's value balance is consistent with its shielded
+    // inputs and outputs. If they are not checked first, a block containing a
+    // malformed value balance could reach the supply consistency check with
+    // inconsistent pool accounting and trigger AbortNode (a node crash) instead
+    // of being cleanly rejected as invalid. Addresses GHSA-g4x5-crjh-29ff.
+    //
+    // This must run for both `fJustCheck` and full connection, so it is placed
+    // before the `if (!fJustCheck)` block. The `has_value()` guards mean the
+    // validators run only when expensive checks are enabled (`fExpensiveChecks`);
+    // they are skipped for block-template checks and for ancestors of the last
+    // checkpoint.
+    if (saplingAuth.has_value() && !saplingAuth.value()->validate()) {
+        return state.DoS(100,
+            error("%s: a Sapling bundle within the block is invalid", __func__),
+            REJECT_INVALID, "bad-sapling-bundle-authorization");
+    }
+    if (orchardAuth.has_value() && !orchardAuth.value()->validate()) {
+        return state.DoS(100,
+            error("%s: an Orchard bundle within the block is invalid", __func__),
+            REJECT_INVALID, "bad-orchard-bundle-authorization");
+    }
+
     if (!fJustCheck) {
         // Update pindex with the net change in value and the chain's total value,
         // both for the supply and for the transparent pool.
@@ -4020,19 +4126,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             REJECT_INVALID, "bad-cb-not-exact");
     }
 
-    // Ensure Sapling authorizations are valid (if we are checking them)
-    if (saplingAuth.has_value() && !saplingAuth.value()->validate()) {
-        return state.DoS(100,
-            error("%s: a Sapling bundle within the block is invalid", __func__),
-            REJECT_INVALID, "bad-sapling-bundle-authorization");
-    }
-
-    // Ensure Orchard signatures are valid (if we are checking them)
-    if (orchardAuth.has_value() && !orchardAuth.value()->validate()) {
-        return state.DoS(100,
-            error("%s: an Orchard bundle within the block is invalid", __func__),
-            REJECT_INVALID, "bad-orchard-bundle-authorization");
-    }
+    // (The Sapling and Orchard bundle authorizations are validated earlier,
+    // before the chain supply consistency check; see GHSA-g4x5-crjh-29ff.)
 
     if (!control.Wait())
         return state.DoS(100, false);
@@ -5412,13 +5507,20 @@ bool ReceivedBlockTransactions(
 {
     // Compute per-block pool value deltas first. `SetChainPoolValues` can
     // fail if the running sum of per-pool values overflows the valid
-    // monetary range. If it does, return without mutating `pindexNew`:
-    // leaving the block index in its prior (header-only) state means
-    // future processing will not consider the block as having data, and
-    // the on-disk block file is harmlessly orphaned (it will be ignored,
-    // or cleaned up by the next reindex).
+    // monetary range. On failure `pindexNew` is left in its prior
+    // (header-only) state and the sending peer is banned (see below).
     if (!SetChainPoolValues(chainparams, block, pindexNew)) {
-        return error("ReceivedBlockTransactions(): SetChainPoolValues failed");
+        // The aggregate pool-value delta is outside the valid monetary range.
+        // This is a deterministic property of the block (ComputePoolDeltas reads
+        // only `block`, `chainparams`, and `nHeight`), so every honest node
+        // rejects the same block and the sending peer can safely be banned. The
+        // DoS score is what bounds an otherwise-unbounded re-write replay: without
+        // it the index entry stays header-only (no BLOCK_HAVE_DATA) and replaying
+        // the same P2P block message re-writes the block body to disk forever
+        // (GHSA-78pp-mc9g-g4mw).
+        return state.DoS(100,
+            error("ReceivedBlockTransactions(): SetChainPoolValues failed"),
+            REJECT_INVALID, "bad-blk-pool-value-out-of-range");
     }
 
     pindexNew->nTx = block.vtx.size();
@@ -5456,7 +5558,18 @@ bool ReceivedBlockTransactions(
             // block reception can defer the parent's chain values becoming
             // available until after `SetChainPoolValues` was called.
             if (!AccumulateChainPoolValues(pindex)) {
-                return error("ReceivedBlockTransactions(): AccumulateChainPoolValues failed at height %d", pindex->nHeight);
+                error("ReceivedBlockTransactions(): AccumulateChainPoolValues failed at height %d", pindex->nHeight);
+                // A cumulative pool value is out of range: a deterministic
+                // consensus failure. `state` belongs to `pindexNew`, so only its
+                // own failure can be recorded through it. A descendant (linked in
+                // from `mapBlocksUnlinked`, possibly from another peer) is left for
+                // `ConnectBlock` to reject, to avoid mis-attributing the ban
+                // (GHSA-78pp-mc9g-g4mw).
+                if (pindex == pindexNew) {
+                    return state.DoS(100, false, REJECT_INVALID,
+                        "bad-blk-pool-value-out-of-range");
+                }
+                return false;
             }
 
             // Fall back to hardcoded Sprout value pool balance
@@ -5612,14 +5725,15 @@ static bool CheckBlockMerkleRoot(const CBlock& block, bool* mutated)
     return !*mutated && computedRoot == block.hashMerkleRoot;
 }
 
-// Generous upper bound used for block *acceptance* (CheckBlock) and for reading
-// blocks back from local block files (LoadExternalBlockFile), as opposed to the
-// standard MAX_BLOCK_SIZE (200000) used for mining. The historical Zclassic
-// chain contains blocks larger than MAX_BLOCK_SIZE (chain variations / forks),
-// which must still validate and load when syncing from genesis; the checkpoints
-// prove the historical chain's correctness, so we only bound the size here
-// defensively. Mirrors the Zclassic reference's GENEROUS_BLOCK_SIZE_LIMIT.
-static const unsigned int GENEROUS_BLOCK_SIZE_LIMIT = 2000000; // 2MB
+// Generous, *non-contextual* upper bound used for block acceptance (CheckBlock)
+// and for reading blocks back from local block files (LoadExternalBlockFile),
+// where the block height is not known. It is the pre-Buttercup historical
+// ceiling: some historical Zclassic blocks exceed the standard MAX_BLOCK_SIZE
+// (200000) used for mining, and must still load and be fully verified when
+// syncing from genesis. The *strict* MAX_BLOCK_SIZE is enforced by height, from
+// the Buttercup upgrade onward, in ContextualCheckBlock — so this bound only
+// caps absurd sizes (DoS) for blocks whose height isn't yet known here.
+static const unsigned int GENEROUS_BLOCK_SIZE_LIMIT = MAX_BLOCK_SIZE_BEFORE_BUTTERCUP; // 2MB
 
 bool CheckBlock(const CBlock& block,
                 CValidationState& state,
@@ -5660,9 +5774,15 @@ bool CheckBlock(const CBlock& block,
     // Size limits (see GENEROUS_BLOCK_SIZE_LIMIT above): block acceptance uses
     // the generous 2MB bound, not MAX_BLOCK_SIZE, so historical over-standard
     // blocks validate when syncing from genesis.
-    if (block.vtx.empty() || block.vtx.size() > GENEROUS_BLOCK_SIZE_LIMIT || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION) > GENEROUS_BLOCK_SIZE_LIMIT)
-        return state.DoS(100, error("CheckBlock(): size limits failed"),
-                         REJECT_INVALID, "bad-blk-length");
+    {
+        const unsigned int blockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
+        if (block.vtx.empty() || block.vtx.size() > GENEROUS_BLOCK_SIZE_LIMIT || blockSize > GENEROUS_BLOCK_SIZE_LIMIT)
+            return state.DoS(100,
+                error("CheckBlock(): block is oversize or empty: %u bytes, %u transactions "
+                      "(absolute ceiling GENEROUS_BLOCK_SIZE_LIMIT = %u bytes)",
+                      blockSize, (unsigned)block.vtx.size(), GENEROUS_BLOCK_SIZE_LIMIT),
+                REJECT_INVALID, "bad-blk-length");
+    }
 
     // First transaction must be coinbase, the rest must not be
     if (block.vtx.empty() || !block.vtx[0].IsCoinBase())
@@ -5772,6 +5892,14 @@ bool ContextualCheckBlock(
     const int nHeight = pindexPrev == NULL ? 0 : pindexPrev->nHeight + 1;
     const Consensus::Params& consensusParams = chainparams.GetConsensus();
 
+    // Block size: there is no strict per-height block-size acceptance rule.
+    // Zclassic's block-*acceptance* limit is the generous GENEROUS_BLOCK_SIZE_LIMIT
+    // (2MB) enforced non-contextually in CheckBlock (matching ZCL, whose
+    // acceptance limit is likewise 2MB; MAX_BLOCK_SIZE = 200000 is only the
+    // miner's block-creation target, not an acceptance rule). The historical
+    // chain contains blocks larger than MAX_BLOCK_SIZE that the network accepted,
+    // so we do NOT re-impose 200000 at acceptance here.
+
     if (fCheckTransactions) {
         // Check that all transactions are finalized
         for (const CTransaction& tx : block.vtx) {
@@ -5851,7 +5979,11 @@ static bool AcceptBlockHeader(const CBlockHeader& block, CValidationState& state
             return state.DoS(10, error("%s: prev block not found", __func__), 0, "bad-prevblk");
         pindexPrev = (*mi).second;
         if (pindexPrev->nStatus & BLOCK_FAILED_MASK)
-            return state.DoS(100, error("%s: prev block invalid", __func__), REJECT_INVALID, "bad-prevblk");
+            // Building a header atop a block we already know to be invalid is not,
+            // by itself, strong evidence of misbehaviour (a peer may simply be on
+            // a doomed fork); use a DoS score of 0 so an honest-but-unlucky peer is
+            // not banned for relaying such headers. The header is still rejected.
+            return state.DoS(0, error("%s: prev block invalid", __func__), REJECT_INVALID, "bad-prevblk");
     }
 
     if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev))

@@ -198,13 +198,19 @@ TEST(ChecktransactionTests, BadTxnsOversize) {
         CTransaction tx(mtx);
         ASSERT_EQ(::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION), 100202);
 
-        // Passes non-contextual checks...
+        // Passes non-contextual checks (the non-contextual ceiling is now the
+        // generous MAX_BLOCK_SIZE_BEFORE_BUTTERCUP, 2MB)...
         MockCValidationState state;
         EXPECT_TRUE(CheckTransactionWithoutProofVerification(tx, state));
 
-        // ... but fails contextual ones!
-        EXPECT_CALL(state, DoS(100, false, REJECT_INVALID, "bad-txns-oversize", false, "")).Times(1);
-        EXPECT_FALSE(ContextualCheckTransaction(tx, state, Params(), 1, true));
+        // ... and also passes contextual checks at this PRE-Buttercup height:
+        // the strict transaction size limit is only enforced from the Buttercup
+        // upgrade onward (Zclassic), so the generous historical ceiling applies
+        // here. (The strict post-Buttercup enforcement is covered by
+        // ChecktransactionTests.TxSizeButtercupBoundary.)
+        EXPECT_CALL(state, DoS(::testing::_, ::testing::_, ::testing::_,
+                               "bad-txns-oversize", ::testing::_, ::testing::_)).Times(0);
+        EXPECT_TRUE(ContextualCheckTransaction(tx, state, Params(), 1, true));
     }
 
     {
@@ -273,19 +279,93 @@ TEST(ChecktransactionTests, OversizeSaplingTxns) {
         EXPECT_TRUE(CheckTransactionWithoutProofVerification(tx, state));
     }
 
-    // Transaction just over the limit
+    // Transaction just over the post-Buttercup standard limit.
+    //
+    // The NON-contextual CheckTransactionWithoutProofVerification now bounds
+    // transactions only by the generous historical ceiling
+    // (MAX_BLOCK_SIZE_BEFORE_BUTTERCUP, 2MB), because the block height is not
+    // known here. So a transaction just over MAX_TX_SIZE_AFTER_SAPLING now PASSES
+    // this check. The strict post-Buttercup limit is enforced contextually, by
+    // height, in ContextualCheckTransaction — see the
+    // ContextualCheckTransaction.TxSizeButtercupBoundary test below.
     mtx.vin[1].scriptSig << OP_1;
 
     {
         CTransaction tx(mtx);
         EXPECT_EQ(::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION), MAX_TX_SIZE_AFTER_SAPLING + 1);
 
-        MockCValidationState state;
-        EXPECT_CALL(state, DoS(100, false, REJECT_INVALID, "bad-txns-oversize", false, "")).Times(1);
-        EXPECT_FALSE(CheckTransactionWithoutProofVerification(tx, state));
+        CValidationState state;
+        EXPECT_TRUE(CheckTransactionWithoutProofVerification(tx, state));
     }
 
     // Revert to default
+    RegtestDeactivateSapling();
+}
+
+// Regression test for the Zclassic height-aware transaction size limit.
+//
+// The strict standard limit (MAX_TX_SIZE_AFTER_SAPLING) is enforced
+// contextually from the Buttercup upgrade onward; before Buttercup a generous
+// historical ceiling applies so that pre-Buttercup historical transactions that
+// exceed today's limit can still be fully verified when syncing from genesis.
+// A transaction one byte over MAX_TX_SIZE_AFTER_SAPLING must therefore be
+// accepted by ContextualCheckTransaction before Buttercup and rejected at/after.
+TEST(ChecktransactionTests, TxSizeButtercupBoundary) {
+    RegtestActivateSapling();
+    // Activate Buttercup at height 2 so height 1 is pre-Buttercup and height 2 is
+    // post-Buttercup (Sapling is ALWAYS_ACTIVE, so the consensus branch id at
+    // height 1 is Sapling's, matching the JoinSplit signature below).
+    UpdateNetworkUpgradeParameters(Consensus::UPGRADE_BUTTERCUP, 2);
+
+    CMutableTransaction mtx = GetValidTransaction();
+    mtx.fOverwintered = true;
+    mtx.nVersionGroupId = SAPLING_VERSION_GROUP_ID;
+    mtx.nVersion = SAPLING_TX_VERSION;
+    mtx.vJoinSplit[0].proof = libzcash::GrothProof();
+    mtx.vJoinSplit[1].proof = libzcash::GrothProof();
+    CreateJoinSplitSignature(mtx, NetworkUpgradeInfo[Consensus::UPGRADE_SAPLING].nBranchId);
+
+    // Build a transaction one byte over the standard post-Buttercup limit.
+    mtx.vin[0].scriptSig = CScript();
+    std::vector<unsigned char> vchData(520);
+    for (unsigned int i = 0; i < 3809; ++i)
+        mtx.vin[0].scriptSig << vchData << OP_DROP;
+    std::vector<unsigned char> vchDataRemainder(453);
+    mtx.vin[0].scriptSig << vchDataRemainder << OP_DROP;
+    mtx.vin[0].scriptSig << OP_1;
+    mtx.vin[1].scriptSig << OP_1;
+    mtx.vin[1].scriptSig << OP_1;
+
+    CTransaction tx(mtx);
+    ASSERT_EQ(::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION), MAX_TX_SIZE_AFTER_SAPLING + 1);
+
+    // We assert specifically on the size verdict ("bad-txns-oversize") rather
+    // than the overall pass/fail of ContextualCheckTransaction, so the test is
+    // robust to other height-dependent checks (e.g. the consensus branch id of
+    // the JoinSplit signature differing at a post-Buttercup height): the size
+    // check runs before those, so its verdict is well-defined either way.
+
+    // Pre-Buttercup (height 1): the generous ceiling applies — the over-limit
+    // transaction is NOT rejected for size.
+    {
+        MockCValidationState state;
+        EXPECT_CALL(state, DoS(::testing::_, ::testing::_, ::testing::_,
+                               "bad-txns-oversize", ::testing::_, ::testing::_)).Times(0);
+        ContextualCheckTransaction(tx, state, Params(), 1, true);
+    }
+
+    // Post-Buttercup (height 2): the strict MAX_TX_SIZE_AFTER_SAPLING is enforced
+    // and the over-limit transaction is rejected as oversize (DoS 100). The size
+    // check fires before the signature/branch-id checks, so this verdict holds
+    // regardless of the JoinSplit signature's branch id.
+    {
+        MockCValidationState state;
+        EXPECT_CALL(state, DoS(100, false, REJECT_INVALID, "bad-txns-oversize", false, "")).Times(1);
+        EXPECT_FALSE(ContextualCheckTransaction(tx, state, Params(), 2, true));
+    }
+
+    // Revert to defaults.
+    UpdateNetworkUpgradeParameters(Consensus::UPGRADE_BUTTERCUP, Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT);
     RegtestDeactivateSapling();
 }
 

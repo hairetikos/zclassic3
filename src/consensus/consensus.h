@@ -32,6 +32,19 @@ static const unsigned int MAX_BLOCK_SIGOPS = 20000;
 /** The maximum size of a transaction (network rule) */
 static const unsigned int MAX_TX_SIZE_BEFORE_SAPLING = 100000;
 static const unsigned int MAX_TX_SIZE_AFTER_SAPLING = 102000; // a little extra
+/**
+ * Generous historical ceiling for block and transaction sizes BEFORE the
+ * Buttercup upgrade. The early Zclassic chain (inherited from Zcash 1.0.x) used
+ * the 2 MB block size and did not enforce today's smaller standard limits, so
+ * some historical pre-Buttercup blocks and transactions exceed MAX_BLOCK_SIZE /
+ * MAX_TX_SIZE_*. They must still validate when syncing from genesis. From the
+ * Buttercup upgrade onward the standard limits above are enforced contextually
+ * (by height), so all recent and future blocks/txs are strictly checked while
+ * historical data is fully verified (not skipped) up to this generous bound.
+ * 2 MB is also the P2P message ceiling (MAX_PROTOCOL_MESSAGE_LENGTH), so no
+ * relayable historical block/tx can exceed it.
+ */
+static const unsigned int MAX_BLOCK_SIZE_BEFORE_BUTTERCUP = 2000000;
 /** Coinbase transaction outputs can only be spent after this number of new blocks (network rule) */
 static const int COINBASE_MATURITY = 100;
 /** The minimum value which is invalid for expiry height, used by CTransaction and CMutableTransaction */
